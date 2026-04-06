@@ -18,7 +18,9 @@ from config import PREBUILT_DIR
 
 def patch(decompiled_dir: str) -> bool:
     """Apply all patches to the decompiled APK directory."""
-    manifest_path = os.path.join(decompiled_dir, "AndroidManifest.xml")
+    # Use text manifest if available (from -r mode), otherwise use regular one
+    text_manifest = os.path.join(decompiled_dir, "AndroidManifest.xml.text")
+    manifest_path = text_manifest if os.path.exists(text_manifest) else os.path.join(decompiled_dir, "AndroidManifest.xml")
 
     if not os.path.exists(manifest_path):
         print("[!] AndroidManifest.xml not found")
@@ -46,8 +48,8 @@ def patch(decompiled_dir: str) -> bool:
     if not copy_payload(decompiled_dir):
         return False
 
-    # Step 4: Fix broken resources from apktool decompilation
-    fix_decompile_artifacts(decompiled_dir)
+    # Step 4: Ensure .so files are not compressed (for extractNativeLibs=false)
+    patch_apktool_yml(decompiled_dir)
 
     # Step 5: Patch manifest (permissions + activity)
     if not patch_manifest(manifest_path):
@@ -292,6 +294,22 @@ def fix_decompile_artifacts(decompiled_dir: str):
 
     if fixed > 0:
         print(f"[+] Fixed @null references in {fixed} drawable XML files")
+
+
+def patch_apktool_yml(decompiled_dir: str):
+    """Add .so to doNotCompress in apktool.yml so native libs stay uncompressed."""
+    yml_path = os.path.join(decompiled_dir, "apktool.yml")
+    if not os.path.exists(yml_path):
+        return
+
+    with open(yml_path, "r") as f:
+        content = f.read()
+
+    if "- so" not in content and "doNotCompress:" in content:
+        content = content.replace("doNotCompress:", "doNotCompress:\n- so")
+        with open(yml_path, "w") as f:
+            f.write(content)
+        print("[+] Added .so to doNotCompress in apktool.yml")
 
 
 def patch_manifest(manifest_path: str) -> bool:
