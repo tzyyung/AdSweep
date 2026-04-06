@@ -40,7 +40,7 @@ quadrantChart
 
 | 劣勢 | 說明 | 建議 |
 |------|------|------|
-| **規則庫小** | 目前只有 Money Manager 一個 App 的完整規則 | 優先建立 Top 50 App 規則庫 |
+| **SDK 規則庫小** | 目前只有 Money Manager 一個 App 的完整 SDK 規則 | 1. 整合現有域名清單（5 萬+ 域名，立即可用）<br>2. 逐步建立 Top 50 App 的 SDK 規則 |
 | **需要 CLI** | 一般人不會用命令列 | 做 Web 平台或 Android Manager App |
 | **每次 App 更新要重新注入** | 不像 DNS 方案一次設定永久生效 | 未來做自動化更新檢測 |
 | **規則產出依賴逆向分析** | 即使有建議規則，App 專屬規則仍需人工 | AI 分析引擎（Phase 7） |
@@ -279,6 +279,97 @@ graph TD
     D --> F
     E --> F
 ```
+
+## 規則整合策略 — 借力現有生態
+
+AdSweep 不需要從零建立規則庫。大量現有規則可以直接或轉譯後使用。
+
+### 規則來源地圖
+
+```mermaid
+graph TB
+    subgraph "域名清單（直接整合，5 萬+ 域名）"
+        D1["AdGuard Base Filter<br>~60,000 rules"]
+        D2["EasyList<br>~90,000 rules"]
+        D3["EasyPrivacy<br>~30,000 rules"]
+        D4["Peter Lowe's List<br>~3,000 domains"]
+        D5["Steven Black hosts<br>~80,000 domains"]
+    end
+
+    subgraph "轉譯"
+        T1["提取域名"]
+        T2["去重排序"]
+        T3["~50,000 個不重複域名"]
+    end
+
+    subgraph "AdSweep"
+        A1["URL_MATCHES 規則<br>Hook OkHttp/URL/WebView"]
+        A2["SDK Hook 規則<br>25 條通用 + App 專屬"]
+        A3["Layer 3 行為偵測"]
+    end
+
+    D1 --> T1
+    D2 --> T1
+    D3 --> T1
+    D4 --> T1
+    D5 --> T1
+    T1 --> T2
+    T2 --> T3
+    T3 --> A1
+
+    A1 --> R["全面攔截"]
+    A2 --> R
+    A3 --> R
+```
+
+### 整合對照表
+
+| 來源 | 規則數量 | 轉譯方式 | 難度 | 前提 |
+|------|---------|---------|------|------|
+| AdGuard Base Filter | ~60,000 | 提取域名 → URL_MATCHES | 低 | 規則引擎 |
+| EasyList | ~90,000 | 提取域名 → URL_MATCHES | 低 | 規則引擎 |
+| EasyPrivacy | ~30,000 | 提取域名 → URL_MATCHES | 低 | 規則引擎 |
+| Peter Lowe's List | ~3,000 | 域名直接用 | 最低 | 規則引擎 |
+| Steven Black hosts | ~80,000 | 域名直接用 | 最低 | 規則引擎 |
+| ReVanced patches | ~200 | 分析 Kotlin → 翻譯 JSON | 高 | 人工分析 |
+| Xposed 模組 | 數百個 | 分析 Java → 翻譯 JSON | 高 | 人工分析 |
+
+### 整合後的規則覆蓋
+
+```mermaid
+pie title 規則覆蓋來源（整合後）
+    "域名清單（AdGuard/EasyList）" : 50000
+    "通用 SDK 規則（內建）" : 25
+    "App 專屬規則（社群）" : 200
+    "Layer 3 用戶回報" : 100
+```
+
+**關鍵洞察：規則引擎是槓桿。** 只要實作 `URL_MATCHES`，AdSweep 的規則量就從 25 條跳到 5 萬+ 條。這不是從零累積，而是站在 AdGuard/EasyList 十幾年的成果上。
+
+### 兩層攔截的互補
+
+```mermaid
+graph TD
+    subgraph "域名層（URL_MATCHES）"
+        U1["攔截所有廣告網路請求"]
+        U2["覆蓋廣：5 萬+ 域名"]
+        U3["但不能阻止 SDK 初始化"]
+    end
+
+    subgraph "SDK 層（現有 Hook）"
+        S1["攔截 SDK 方法呼叫"]
+        S2["覆蓋精：25 條精確規則"]
+        S3["能阻止 SDK 初始化、UI 佔用"]
+    end
+
+    U1 --> R["雙層攔截 = 最全面"]
+    S1 --> R
+
+    U3 -.->|"互補"| S1
+    S2 -.->|"互補"| U1
+```
+
+域名層擋住**網路請求**（廣告素材載入），SDK 層擋住**本地行為**（SDK 初始化、UI 佔用、追蹤）。兩層加起來比任何單一方案都全面。
 
 ## 技術護城河
 
