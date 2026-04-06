@@ -45,14 +45,23 @@ public class PatchEngine {
         new Thread(() -> {
             try {
                 doPatch(inputApk, appRules);
-            } catch (Exception e) {
-                Log.e(TAG, "Patch failed", e);
-                callback.onError("Patch failed: " + e.getMessage());
+            } catch (Throwable t) {
+                Log.e(TAG, "Patch failed", t);
+                String msg = t.getMessage();
+                if (t.getCause() != null) msg += "\nCaused by: " + t.getCause().getMessage();
+                callback.onError("Patch failed: " + msg);
             }
         }).start();
     }
 
     private void doPatch(File inputApk, File appRules) throws Exception {
+        // Fix: apktool's OSDetection needs os.name to be set (null on Android)
+        if (System.getProperty("os.name") == null) {
+            System.setProperty("os.name", "Linux");
+        }
+        if (System.getProperty("user.home") == null) {
+            System.setProperty("user.home", context.getFilesDir().getAbsolutePath());
+        }
         File workDir = new File(context.getCacheDir(), "adsweep_work");
         File decompDir = new File(workDir, "decompiled");
         File outputApk = new File(context.getFilesDir(), "patched/patched.apk");
