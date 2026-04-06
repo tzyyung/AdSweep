@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "mm-signature-check",
+      "className": "com.realbyte.money.ui.main.Main",
+      "methodName": "C2",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "Signature Check",
+      "notes": "Signature verification bypass — C2() returns true if signature mismatch"
+    },
+    {
+      "id": "mm-globals-premium",
+      "className": "com.realbyte.money.config.Globals",
+      "methodName": "e",
+      "action": "BLOCK_RETURN_TRUE",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "Premium Check",
+      "notes": "Returns true so Intro initialization runs normally"
+    },
+    {
+      "id": "mm-globals-check",
+      "className": "com.realbyte.money.config.Globals",
+      "methodName": "j",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "License Check",
+      "notes": "Additional license/integrity check"
+    },
+    {
+      "id": "mm-analytics-noop",
+      "className": "com.realbyte.money.utils.log_analytics.RbAnalyticAgent",
+      "methodName": "a",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "Analytics",
+      "notes": "Firebase Analytics tracking"
+    },
+    {
+      "id": "mm-device-id",
+      "className": "com.realbyte.money.cloud.util.DeviceAdId",
+      "methodName": "b",
+      "action": "BLOCK_RETURN_EMPTY_STRING",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "Device ID",
+      "notes": "Block device ad ID collection"
+    },
+    {
+      "id": "mm-remote-request",
+      "className": "com.realbyte.money.utils.remote.RbRemoteRequest",
+      "methodName": "i",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "Remote Request",
+      "notes": "Block remote API requests"
+    }
+  ]
+}

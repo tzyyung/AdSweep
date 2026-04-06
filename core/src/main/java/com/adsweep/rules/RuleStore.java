@@ -31,6 +31,7 @@ public class RuleStore {
 
     private static final String TAG = "AdSweep.RuleStore";
     private static final String COMMON_RULES_ASSET = "adsweep_rules_common.json";
+    private static final String APP_RULES_ASSET = "adsweep_rules_app.json";
     private static final String APP_RULES_FILE = "adsweep/rules_app.json";
     private static final String WHITELIST_FILE = "adsweep/whitelist.json";
 
@@ -108,7 +109,11 @@ public class RuleStore {
 
     private void loadAll() {
         commonRules = loadRulesFromAsset(COMMON_RULES_ASSET);
+        // App rules: load from file first, fallback to bundled asset
         appRules = loadRulesFromFile(APP_RULES_FILE);
+        if (appRules.isEmpty()) {
+            appRules = loadRulesFromAsset(APP_RULES_ASSET);
+        }
         whitelist = loadWhitelist();
         Log.i(TAG, "Loaded " + commonRules.size() + " common rules, "
                 + appRules.size() + " app rules, "

@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--apk", required=True, help="Path to the target APK")
     parser.add_argument("--output", help="Output path for patched APK (default: <name>_adsweep.apk)")
     parser.add_argument("--skip-scan", action="store_true", help="Skip Layer 2 static scan")
+    parser.add_argument("--rules", help="Path to app-specific rules JSON file")
     parser.add_argument("--keystore", help="Path to signing keystore")
     parser.add_argument("--ks-pass", help="Keystore password")
     parser.add_argument("--key-alias", help="Key alias")
@@ -78,6 +79,14 @@ def main():
                 for sdk in report["found_sdks"]:
                     print(f"    - {sdk['sdk']} ({sdk['smali_files']} files)")
             print()
+
+        # Step 2b: Copy app-specific rules if provided
+        if args.rules:
+            import shutil as _shutil
+            assets_dir = os.path.join(decompiled_dir, "assets")
+            os.makedirs(assets_dir, exist_ok=True)
+            _shutil.copy2(args.rules, os.path.join(assets_dir, "adsweep_rules_app.json"))
+            print(f"[+] Copied app rules: {args.rules}")
 
         # Step 3: Patch
         if not patch(decompiled_dir):
