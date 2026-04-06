@@ -62,7 +62,7 @@ done
 cp assets/* $PREBUILT/assets/
 ```
 
-## 注入測試
+## 注入
 
 ### 基本注入
 
@@ -79,6 +79,15 @@ python inject.py \
   --rules rules/money_manager.json \
   --keystore /path/to/debug.keystore
 ```
+
+### 注入流程說明
+
+1. `apktool d -r` — 反編譯 smali，資源不動
+2. Layer 2 掃描 — 自動偵測廣告 SDK，產生 `suggested_rules.json`
+3. 注入 — smali 入口 + .so + assets + App 規則
+4. `apktool b` — 重建 APK
+5. `zipalign -p` — 頁對齊（.so 不壓縮，配合 extractNativeLibs=false）
+6. `apksigner sign` — 簽名
 
 ### 安裝到模擬器/設備
 
@@ -108,11 +117,11 @@ $ADB logcat -s "AdSweep" "AdSweep.HookManager" "AdSweep.Block"
 I AdSweep : === AdSweep Initializing ===
 I AdSweep : LSPlant initialized successfully
 I AdSweep : Hook engine ready
-I AdSweep.HookManager: Loading 29 rules
+I AdSweep.HookManager: Loading 32 rules
 I AdSweep.HookManager: Hooked: com.google.android.gms.ads.BaseAdView.loadAd [BLOCK_RETURN_VOID]
 ...
-I AdSweep.HookManager: Initialization complete: 19/29 hooks installed
-I AdSweep : === AdSweep Ready: 19 hooks active ===
+I AdSweep.HookManager: Initialization complete: 22/32 hooks installed
+I AdSweep : === AdSweep Ready: 22 hooks active ===
 I AdSweep.Block: Blocked: com.applovin.sdk.AppLovinSdk.initialize
 ```
 
@@ -148,4 +157,4 @@ avdmanager create avd -n AdSweep_Test \
 emulator -avd AdSweep_Test
 ```
 
-> 注意：API 36 的 ShadowHook linker 有相容性問題，建議使用 API 34 測試。
+> 注意：API 36 的 ShadowHook linker 有相容性問題（error 12），但 LSPlant 仍可正常運作。建議使用 API 34 測試。

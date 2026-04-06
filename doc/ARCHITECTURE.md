@@ -12,10 +12,13 @@ AdSweep 由兩部分組成：
 ```
 python inject.py --apk target.apk --rules rules/app.json
   │
-  ├─ 1. apktool 反編譯 APK
+  ├─ 1. apktool -r 反編譯（不反編譯資源，避免 @null 損壞）
+  │     Manifest 另外用 --only-manifest 解碼為文字版
   │
   ├─ 2. Layer 2 靜態掃描（scanner.py）
-  │     掃描 smali 目錄，偵測已知廣告 SDK 和可疑模式
+  │     ├─ 掃描 smali 目錄，偵測已知廣告 SDK
+  │     ├─ 啟發式分析（class 繼承、字串常量、API 呼叫模式）
+  │     └─ 自動產生建議規則（suggested_rules.json）
   │
   ├─ 3. 修改 Application.onCreate()（patcher.py）
   │     注入 AdSweep.init(this) 呼叫
@@ -25,16 +28,23 @@ python inject.py --apk target.apk --rules rules/app.json
   │     ├─ lib/**/*.so（libadsweep, liblsplant, libshadowhook, libc++_shared）
   │     └─ assets/（通用規則 + App 規則）
   │
-  ├─ 5. 修復 apktool 反編譯問題
-  │     drawable @null → @android:color/transparent
+  ├─ 5. 修改 apktool.yml
+  │     └─ 加入 .so 到 doNotCompress（配合 extractNativeLibs=false）
   │
-  ├─ 6. 修改 AndroidManifest.xml
-  │     ├─ extractNativeLibs=true
-  │     ├─ SYSTEM_ALERT_WINDOW 權限
-  │     └─ SettingsActivity 註冊
-  │
-  └─ 7. apktool 打包 → zipalign → apksigner 簽名
+  └─ 6. apktool 打包 → zipalign -p（頁對齊）→ apksigner 簽名
 ```
+
+## 為什麼用 -r 模式
+
+apktool 全反編譯會將資源 XML 中的 binary 引用解碼為 `@null`，重建後導致：
+- `InflateException` — drawable 載入失敗
+- 需要修復大量 XML 檔案（40+）
+
+使用 `-r` 模式不反編譯資源，原始資源保持 binary 格式，完全避免此問題。
+代價是 AndroidManifest.xml 也保持 binary，無法直接文字編輯。
+目前的解決方式：
+- `extractNativeLibs`：透過 doNotCompress + zipalign -p 替代
+- 權限/Activity 註冊：暫未修改，不影響核心功能
 
 ## Hook 引擎
 
@@ -56,11 +66,12 @@ Java 層
 [LSPlant](https://github.com/LSPosed/LSPlant) 是 LSPosed 團隊的 ART Hook 庫：
 - 支援 Android 5.0 ~ 15（API 21-35）
 - 透過修改 ART 方法入口指標實現 Java 方法 Hook
-- 使用 `lsplant-standalone:6.4`（內含 libc++ 靜態連結）
+- 每個 App 進程獨立運作，不影響系統或其他 App
+- 使用 `lsplant-standalone:6.4`
 
 ### ShadowHook
 
-[ShadowHook](https://github.com/nicedayzhu/ShadowHook) 是 ByteDance 的 inline hook 庫：
+[ShadowHook](https://github.com/bytedance/android-inline-hook) 是 ByteDance 的 inline hook 庫：
 - LSPlant 內部需要它來修改 ART 的 native 函數
 - 提供 `shadowhook_hook_func_addr()` 做 native inline hook
 - 提供 `shadowhook_dlsym()` 做符號解析
@@ -72,6 +83,21 @@ Java 層
 3. `HookManager` 載入規則 → 用 `ClassLoader.loadClass()` 探測每個規則的 class
 4. 找到的 class → 用 `HookEngine.hook()` 安裝 Hook
 5. 原始方法被呼叫時 → `BlockCallback.handleHook()` 攔截，回傳設定的值
+6. 找不到的 class → `ClassNotFoundException` 自動跳過，無副作用
+
+## 三層偵測
+
+| 層次 | 時機 | 方式 | 狀態 |
+|------|------|------|------|
+| Layer 1 | Runtime | ClassLoader 探測 + Hook 已知 SDK | **已完成** |
+| Layer 2 | 注入時 | 靜態掃描 smali，自動產生建議規則 | **已完成** |
+| Layer 3 | Runtime | 行為偵測 + 用戶回報 UI | 程式碼就緒，暫時禁用 |
+
+### Layer 3 暫時禁用原因
+
+Hook `ViewGroup.addView()` 和 `Activity.startActivity()` 等高頻系統方法
+會嚴重影響 App UI 渲染和 Activity 跳轉，導致閃退。
+需重新設計為侵入性更低的偵測點。
 
 ## 規則系統
 
@@ -88,10 +114,16 @@ AdSweep/
 │   │   │   ├── HookEngine.java   # JNI bridge
 │   │   │   ├── HookManager.java  # 規則調度
 │   │   │   ├── HookCallback.java # 回調基類
-│   │   │   └── BlockCallback.java# 攔截回調
-│   │   └── rules/
-│   │       ├── Rule.java         # 規則資料類
-│   │       └── RuleStore.java    # 規則讀寫合併
+│   │   │   ├── BlockCallback.java# 攔截回調（多種 action）
+│   │   │   └── LayerThreeMonitor.java # Layer 3（暫時禁用）
+│   │   ├── rules/
+│   │   │   ├── Rule.java         # 規則資料類
+│   │   │   └── RuleStore.java    # 規則讀寫合併
+│   │   ├── reporter/
+│   │   │   ├── FloatingReporter.java  # 浮動回報 UI
+│   │   │   └── DetectionEvent.java    # 偵測事件
+│   │   └── ui/
+│   │       └── SettingsActivity.java  # 設定介面
 │   ├── src/main/jni/
 │   │   ├── adsweep_jni.cpp       # LSPlant + ShadowHook JNI
 │   │   └── CMakeLists.txt
@@ -100,10 +132,10 @@ AdSweep/
 │
 ├── injector/                      # Python 注入工具
 │   ├── inject.py                  # 主 CLI
-│   ├── decompiler.py              # apktool 封裝
-│   ├── scanner.py                 # Layer 2 靜態掃描
-│   ├── patcher.py                 # smali 注入 + manifest 修改
-│   ├── packager.py                # 打包簽名
+│   ├── decompiler.py              # apktool -r 封裝 + manifest 解碼
+│   ├── scanner.py                 # Layer 2 靜態掃描 + 自動產生規則
+│   ├── patcher.py                 # smali 注入 + apktool.yml 修改
+│   ├── packager.py                # 打包（zipalign -p）+ 簽名
 │   ├── config.py                  # 工具路徑設定
 │   ├── baksmali.jar               # DEX 轉 smali 工具
 │   └── rules/                     # App 專屬規則範例
@@ -119,7 +151,9 @@ AdSweep/
 
 ## 已知限制
 
-- **Android API 36+**：ShadowHook linker 初始化失敗（error 12），但 LSPlant 有 fallback 機制仍可正常運作，需進一步測試
-- **x86_64**：ShadowHook 不支援，模擬器測試需用 ARM64 映像
+- **Android API 36+**：ShadowHook linker 初始化失敗（error 12），但 LSPlant 有 fallback 仍可正常運作
+- **x86/x86_64**：ShadowHook 不支援，模擬器測試需用 ARM64 映像
 - **Private 方法**：LSPlant 可以 Hook private 方法（已驗證 `Main.C2()`）
 - **Split APK**：注入的 base APK 需搭配原版 split APK 一起安裝（split 需同一把 keystore 簽名）
+- **Manifest 修改**：-r 模式下 manifest 保持 binary，目前無法直接編輯（不影響核心功能）
+- **Layer 3**：高頻系統方法 Hook 會影響穩定性，暫時禁用
