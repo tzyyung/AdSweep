@@ -1,0 +1,67 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:2:1-29:12
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:2:1-29:12
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:2:1-29:12
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:2:1-29:12
+	package
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	android:versionName
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	android:versionCode
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.READ_EXTERNAL_STORAGE
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:5:5-80
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:5:22-77
+uses-permission#android.permission.MANAGE_EXTERNAL_STORAGE
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:6:5-82
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:6:22-79
+uses-permission#android.permission.REQUEST_INSTALL_PACKAGES
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:8:5-83
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:8:22-80
+uses-permission#android.permission.INTERNET
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:10:5-67
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:10:22-64
+application
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:12:5-27:19
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:12:5-27:19
+	android:extractNativeLibs
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	android:label
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:15:9-40
+	android:icon
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:14:9-45
+	android:allowBackup
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:13:9-36
+	android:theme
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:16:9-45
+activity#com.adsweep.manager.MainActivity
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:18:9-25:20
+	android:exported
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:20:13-36
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:19:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:21:13-24:29
+action#android.intent.action.MAIN
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:22:17-69
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:22:25-66
+category#android.intent.category.LAUNCHER
+ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:23:17-77
+	android:name
+		ADDED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml:23:27-74
+uses-sdk
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/anson/incrte/AdSweep/manager/src/main/AndroidManifest.xml

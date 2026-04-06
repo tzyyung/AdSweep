@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AdSweep Manager</string>
+    <string name="select_apk">Select APK</string>
+    <string name="patch">Patch</string>
+    <string name="install">Install</string>
+    <string name="scanning">Scanning…</string>
+    <string name="patching">Patching…</string>
+    <string name="no_apk_selected">No APK selected</string>
+    <string name="select_apk_hint">Tap to select an APK file or choose from installed apps</string>
+</resources>

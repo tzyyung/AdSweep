@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "AdSweep"
 include(":core")
+include(":manager")

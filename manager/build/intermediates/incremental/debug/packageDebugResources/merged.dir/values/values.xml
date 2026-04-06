@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AdSweep Manager</string>
+    <string name="install">Install</string>
+    <string name="no_apk_selected">No APK selected</string>
+    <string name="patch">Patch</string>
+    <string name="patching">Patching…</string>
+    <string name="scanning">Scanning…</string>
+    <string name="select_apk">Select APK</string>
+    <string name="select_apk_hint">Tap to select an APK file or choose from installed apps</string>
+    <style name="Theme.AdSweep" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#1976D2</item>
+        <item name="android:colorPrimaryDark">#1565C0</item>
+        <item name="android:colorAccent">#4CAF50</item>
+        <item name="android:statusBarColor">#1565C0</item>
+    </style>
+</resources>

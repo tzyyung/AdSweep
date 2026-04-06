@@ -1,0 +1,24 @@
+R_DEF: Internal format may change without notice
+local
+drawable ic_launcher
+id btnInstall
+id btnPatch
+id cardLog
+id cardRules
+id cardScanResults
+id cardSelectApk
+id tvApkInfo
+id tvLog
+id tvRulesInfo
+id tvScanResults
+layout activity_main
+string app_name
+string install
+string no_apk_selected
+string patch
+string patching
+string scanning
+string select_apk
+string select_apk_hint
+style Theme.AdSweep
+xml file_paths

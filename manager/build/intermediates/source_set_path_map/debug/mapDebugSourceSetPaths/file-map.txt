@@ -1,0 +1,7 @@
+com.adsweep.manager-pngs-0 /Users/anson/incrte/AdSweep/manager/build/generated/res/pngs/debug
+com.adsweep.manager-resValues-1 /Users/anson/incrte/AdSweep/manager/build/generated/res/resValues/debug
+com.adsweep.manager-packageDebugResources-2 /Users/anson/incrte/AdSweep/manager/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.adsweep.manager-packageDebugResources-3 /Users/anson/incrte/AdSweep/manager/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.adsweep.manager-debug-4 /Users/anson/incrte/AdSweep/manager/build/intermediates/merged_res/debug/mergeDebugResources
+com.adsweep.manager-debug-5 /Users/anson/incrte/AdSweep/manager/src/debug/res
+com.adsweep.manager-main-6 /Users/anson/incrte/AdSweep/manager/src/main/res
