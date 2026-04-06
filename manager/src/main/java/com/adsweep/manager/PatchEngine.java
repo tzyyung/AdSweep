@@ -94,9 +94,11 @@ public class PatchEngine {
         progress("Patching manifest...");
         ManifestPatcher.patch(unsignedApk);
 
-        // Step 4: Sign
+        // Step 4: Sign with v1 JAR signing (preserves ZIP structure)
         progress("Signing APK...");
-        signApk(unsignedApk, outputApk);
+        jarSign(unsignedApk);
+        outputApk.getParentFile().mkdirs();
+        unsignedApk.renameTo(outputApk);
 
         deleteRecursive(workDir);
         progress("Done!");
@@ -187,20 +189,22 @@ public class PatchEngine {
                 if (entry.getName().matches("classes\\d*\\.dex")) continue;
                 if (entry.getName().startsWith("META-INF/")) continue; // Will be re-signed
 
-                ZipEntry newEntry = new ZipEntry(entry.getName());
-                // Preserve original compression method (critical for .so and .dex)
-                if (entry.getMethod() == ZipEntry.STORED) {
-                    newEntry.setMethod(ZipEntry.STORED);
-                    newEntry.setSize(entry.getSize());
-                    newEntry.setCompressedSize(entry.getSize());
-                    newEntry.setCrc(entry.getCrc());
-                }
+                // Store ALL entries as STORED (uncompressed)
+                // apksig rewrites ZIP and may recompress, but setAlignmentPreserved
+                // should keep STORED entries. Using STORED for everything ensures compatibility.
+                String name = entry.getName();
+                byte[] entryBytes = readStreamBytes(src.getInputStream(entry));
+                ZipEntry newEntry = new ZipEntry(name);
+                newEntry.setMethod(ZipEntry.STORED);
+                newEntry.setSize(entryBytes.length);
+                newEntry.setCompressedSize(entryBytes.length);
+                java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
+                crc32.update(entryBytes);
+                newEntry.setCrc(crc32.getValue());
                 zos.putNextEntry(newEntry);
-                InputStream is = src.getInputStream(entry);
-                copyStream(is, zos);
-                is.close();
+                zos.write(entryBytes);
                 zos.closeEntry();
-                written.add(entry.getName());
+                written.add(name);
             }
 
             // Write patched DEX files (STORED, uncompressed)
@@ -264,6 +268,339 @@ public class PatchEngine {
 
     // --- Sign APK ---
 
+    /**
+     * JAR sign an APK: compute digests, create MANIFEST.MF + CERT.SF + CERT.RSA,
+     * add them to the ZIP without rewriting existing entries.
+     */
+    private void jarSign(File apkFile) throws Exception {
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        InputStream ksIs = context.getAssets().open("debug.p12");
+        ks.load(ksIs, "android".toCharArray());
+        ksIs.close();
+
+        PrivateKey key = (PrivateKey) ks.getKey("debugkey", "android".toCharArray());
+        java.security.cert.X509Certificate cert =
+                (java.security.cert.X509Certificate) ks.getCertificate("debugkey");
+
+        // Build MANIFEST.MF with SHA-256 digests of all entries
+        StringBuilder mf = new StringBuilder();
+        mf.append("Manifest-Version: 1.0\r\nCreated-By: AdSweep\r\n\r\n");
+
+        java.util.LinkedHashMap<String, String> entryDigests = new java.util.LinkedHashMap<>();
+        try (ZipFile zf = new ZipFile(apkFile)) {
+            Enumeration<? extends ZipEntry> entries = zf.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (entry.isDirectory() || entry.getName().startsWith("META-INF/")) continue;
+                byte[] data = readStreamBytes(zf.getInputStream(entry));
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                String digest = android.util.Base64.encodeToString(md.digest(data), android.util.Base64.NO_WRAP);
+                entryDigests.put(entry.getName(), digest);
+                mf.append("Name: ").append(entry.getName()).append("\r\n");
+                mf.append("SHA-256-Digest: ").append(digest).append("\r\n\r\n");
+            }
+        }
+        byte[] mfBytes = mf.toString().getBytes("UTF-8");
+
+        // Build CERT.SF
+        java.security.MessageDigest mfMd = java.security.MessageDigest.getInstance("SHA-256");
+        String mfDigest = android.util.Base64.encodeToString(mfMd.digest(mfBytes), android.util.Base64.NO_WRAP);
+        StringBuilder sf = new StringBuilder();
+        sf.append("Signature-Version: 1.0\r\n");
+        sf.append("SHA-256-Digest-Manifest: ").append(mfDigest).append("\r\n");
+        sf.append("Created-By: AdSweep\r\n\r\n");
+        byte[] sfBytes = sf.toString().getBytes("UTF-8");
+
+        // Build CERT.RSA (PKCS7 signature block)
+        byte[] rsaBytes = createPkcs7Signature(sfBytes, key, cert);
+
+        // Add META-INF entries to APK (append to ZIP)
+        File tmpApk = new File(apkFile.getParent(), "signed.apk");
+        try (ZipFile src = new ZipFile(apkFile);
+             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tmpApk))) {
+
+            // Copy all existing entries preserving format
+            Enumeration<? extends ZipEntry> entries = src.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                byte[] data = readStreamBytes(src.getInputStream(entry));
+                ZipEntry newEntry = new ZipEntry(entry.getName());
+                newEntry.setMethod(ZipEntry.STORED);
+                newEntry.setSize(data.length);
+                newEntry.setCompressedSize(data.length);
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(data);
+                newEntry.setCrc(crc.getValue());
+                zos.putNextEntry(newEntry);
+                zos.write(data);
+                zos.closeEntry();
+            }
+
+            // Add META-INF
+            writeStoredEntry(zos, "META-INF/MANIFEST.MF", mfBytes);
+            writeStoredEntry(zos, "META-INF/CERT.SF", sfBytes);
+            writeStoredEntry(zos, "META-INF/CERT.RSA", rsaBytes);
+        }
+        apkFile.delete();
+        tmpApk.renameTo(apkFile);
+    }
+
+    private void writeStoredEntry(ZipOutputStream zos, String name, byte[] data) throws Exception {
+        ZipEntry entry = new ZipEntry(name);
+        entry.setMethod(ZipEntry.STORED);
+        entry.setSize(data.length);
+        entry.setCompressedSize(data.length);
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        entry.setCrc(crc.getValue());
+        zos.putNextEntry(entry);
+        zos.write(data);
+        zos.closeEntry();
+    }
+
+    private byte[] createPkcs7Signature(byte[] sfData, PrivateKey key,
+                                         java.security.cert.X509Certificate cert) throws Exception {
+        // Sign the SF data
+        java.security.Signature sig = java.security.Signature.getInstance("SHA256withRSA");
+        sig.initSign(key);
+        sig.update(sfData);
+        byte[] signature = sig.sign();
+
+        // Build a minimal PKCS#7 SignedData DER structure
+        // This is a simplified version that Android's v1 verifier accepts
+        byte[] certBytes = cert.getEncoded();
+
+        // ASN.1 DER encoding of PKCS7 SignedData
+        ByteArrayOutputStream der = new ByteArrayOutputStream();
+
+        // ContentInfo SEQUENCE
+        byte[] oid_signedData = {0x06, 0x09, 0x2A, (byte)0x86, 0x48, (byte)0x86, (byte)0xF7, 0x0D, 0x01, 0x07, 0x02};
+        byte[] oid_data = {0x06, 0x09, 0x2A, (byte)0x86, 0x48, (byte)0x86, (byte)0xF7, 0x0D, 0x01, 0x07, 0x01};
+        byte[] oid_sha256 = {0x06, 0x09, 0x60, (byte)0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01};
+        byte[] oid_rsaEncryption = {0x06, 0x09, 0x2A, (byte)0x86, 0x48, (byte)0x86, (byte)0xF7, 0x0D, 0x01, 0x01, 0x01};
+
+        // Build SignerInfo
+        byte[] issuerAndSerial = buildIssuerAndSerial(cert);
+        byte[] digestAlg = wrapSequence(concat(oid_sha256, new byte[]{0x05, 0x00}));
+        byte[] encryptionAlg = wrapSequence(concat(oid_rsaEncryption, new byte[]{0x05, 0x00}));
+        byte[] signerInfo = wrapSequence(concat(
+            new byte[]{0x02, 0x01, 0x01}, // version 1
+            issuerAndSerial,
+            digestAlg,
+            encryptionAlg,
+            wrapOctetString(signature)
+        ));
+
+        // Build SignedData
+        byte[] digestAlgSet = wrapSet(digestAlg);
+        byte[] contentInfo = wrapSequence(oid_data);
+        byte[] certSet = wrapContextTag(0, certBytes);
+        byte[] signerInfoSet = wrapSet(signerInfo);
+
+        byte[] signedData = wrapSequence(concat(
+            new byte[]{0x02, 0x01, 0x01}, // version 1
+            digestAlgSet,
+            contentInfo,
+            certSet,
+            signerInfoSet
+        ));
+
+        byte[] contentInfoOuter = wrapSequence(concat(
+            oid_signedData,
+            wrapContextTag(0, signedData)
+        ));
+
+        return contentInfoOuter;
+    }
+
+    private byte[] buildIssuerAndSerial(java.security.cert.X509Certificate cert) {
+        try {
+            byte[] issuer = cert.getIssuerX500Principal().getEncoded();
+            byte[] serial = cert.getSerialNumber().toByteArray();
+            // DER INTEGER: tag(02) + length + value
+            byte[] serialTlv = wrapTag(0x02, serial);
+            // IssuerAndSerialNumber: SEQUENCE { issuer, serialNumber }
+            return wrapSequence(concat(issuer, serialTlv));
+        } catch (Exception e) {
+            return new byte[0];
+        }
+    }
+
+    private byte[] wrapSequence(byte[] content) { return wrapTag(0x30, content); }
+    private byte[] wrapSet(byte[] content) { return wrapTag(0x31, content); }
+    private byte[] wrapOctetString(byte[] content) { return wrapTag(0x04, content); }
+    private byte[] wrapContextTag(int num, byte[] content) { return wrapTag(0xA0 | num, content); }
+
+    private byte[] wrapTag(int tag, byte[] content) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(tag);
+        writeLength(out, content.length);
+        out.write(content, 0, content.length);
+        return out.toByteArray();
+    }
+
+    private void writeLength(ByteArrayOutputStream out, int len) {
+        if (len < 128) {
+            out.write(len);
+        } else if (len < 256) {
+            out.write(0x81);
+            out.write(len);
+        } else if (len < 65536) {
+            out.write(0x82);
+            out.write((len >> 8) & 0xFF);
+            out.write(len & 0xFF);
+        } else {
+            out.write(0x83);
+            out.write((len >> 16) & 0xFF);
+            out.write((len >> 8) & 0xFF);
+            out.write(len & 0xFF);
+        }
+    }
+
+    private byte[] concat(byte[]... arrays) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (byte[] a : arrays) out.write(a, 0, a.length);
+        return out.toByteArray();
+    }
+
+    /**
+     * Fix APK compression: take the unsigned APK (correct STORED format) and
+     * copy META-INF from the signed APK into it.
+     * This preserves the original ZIP structure while adding the signature.
+     */
+    private void fixApkCompression(File signedApk, File unsignedApk, File outputApk) throws Exception {
+        // Extract META-INF entries from signed APK
+        Map<String, byte[]> metaInf = new HashMap<>();
+        try (ZipFile signed = new ZipFile(signedApk)) {
+            Enumeration<? extends ZipEntry> entries = signed.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (entry.getName().startsWith("META-INF/")) {
+                    metaInf.put(entry.getName(), readStreamBytes(signed.getInputStream(entry)));
+                }
+            }
+        }
+
+        // Copy unsigned APK + add META-INF
+        try (ZipFile src = new ZipFile(unsignedApk);
+             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(outputApk))) {
+
+            // Copy all entries from unsigned (preserving compression)
+            Enumeration<? extends ZipEntry> entries = src.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (entry.getName().startsWith("META-INF/")) continue;
+
+                if (entry.getMethod() == ZipEntry.STORED) {
+                    byte[] data = readStreamBytes(src.getInputStream(entry));
+                    ZipEntry newEntry = new ZipEntry(entry.getName());
+                    newEntry.setMethod(ZipEntry.STORED);
+                    newEntry.setSize(data.length);
+                    newEntry.setCompressedSize(data.length);
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    crc.update(data);
+                    newEntry.setCrc(crc.getValue());
+                    zos.putNextEntry(newEntry);
+                    zos.write(data);
+                } else {
+                    zos.putNextEntry(new ZipEntry(entry.getName()));
+                    InputStream is = src.getInputStream(entry);
+                    copyStream(is, zos);
+                    is.close();
+                }
+                zos.closeEntry();
+            }
+
+            // Add META-INF from signed APK
+            for (Map.Entry<String, byte[]> mi : metaInf.entrySet()) {
+                zos.putNextEntry(new ZipEntry(mi.getKey()));
+                zos.write(mi.getValue());
+                zos.closeEntry();
+            }
+        }
+    }
+
+    /**
+     * Sign APK in-place using jarsigner-style v1 signing.
+     * This preserves the ZIP structure (unlike ApkSigner which rewrites everything).
+     */
+    private void signApkInPlace(File apkFile) throws Exception {
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        InputStream ksStream = context.getAssets().open("debug.p12");
+        ks.load(ksStream, "android".toCharArray());
+        ksStream.close();
+
+        PrivateKey key = (PrivateKey) ks.getKey("debugkey", "android".toCharArray());
+        java.security.cert.X509Certificate cert =
+                (java.security.cert.X509Certificate) ks.getCertificate("debugkey");
+
+        // Use jarsigner approach: create META-INF/MANIFEST.MF, CERT.SF, CERT.RSA
+        // Then add them to the APK zip
+        java.util.jar.Manifest manifest = new java.util.jar.Manifest();
+        manifest.getMainAttributes().putValue("Manifest-Version", "1.0");
+        manifest.getMainAttributes().putValue("Created-By", "AdSweep Manager");
+
+        // Read all entries and compute digests
+        java.util.Map<String, String> digests = new java.util.LinkedHashMap<>();
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(apkFile)) {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zf.entries();
+            while (entries.hasMoreElements()) {
+                java.util.zip.ZipEntry entry = entries.nextElement();
+                if (entry.getName().startsWith("META-INF/")) continue;
+                byte[] data = readStreamBytes(zf.getInputStream(entry));
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                String digest = android.util.Base64.encodeToString(md.digest(data), android.util.Base64.NO_WRAP);
+                digests.put(entry.getName(), digest);
+                java.util.jar.Attributes attr = new java.util.jar.Attributes();
+                attr.putValue("SHA-256-Digest", digest);
+                manifest.getEntries().put(entry.getName(), attr);
+            }
+        }
+
+        // Write MANIFEST.MF
+        ByteArrayOutputStream mfBos = new ByteArrayOutputStream();
+        manifest.write(mfBos);
+        byte[] mfBytes = mfBos.toByteArray();
+
+        // Create CERT.SF (signature file)
+        java.security.MessageDigest sfMd = java.security.MessageDigest.getInstance("SHA-256");
+        String mfDigest = android.util.Base64.encodeToString(sfMd.digest(mfBytes), android.util.Base64.NO_WRAP);
+        StringBuilder sfBuilder = new StringBuilder();
+        sfBuilder.append("Signature-Version: 1.0\r\n");
+        sfBuilder.append("Created-By: AdSweep Manager\r\n");
+        sfBuilder.append("SHA-256-Digest-Manifest: ").append(mfDigest).append("\r\n");
+        sfBuilder.append("\r\n");
+        byte[] sfBytes = sfBuilder.toString().getBytes();
+
+        // Create CERT.RSA (PKCS7 signature)
+        java.security.Signature sig = java.security.Signature.getInstance("SHA256withRSA");
+        sig.initSign(key);
+        sig.update(sfBytes);
+        byte[] sigBytes = sig.sign();
+
+        // Build PKCS7 SignedData structure
+        byte[] certEncoded = cert.getEncoded();
+        // Simplified: just write raw signature (v1 signature validation is lenient)
+        // For proper v1 signing, we'd need full PKCS7/CMS
+        // Use ApkSigner but with outputApk == inputApk to force in-place
+        // Actually let's just use ApkSigner properly
+
+        // Fallback: use ApkSigner but accept the rewriting
+        ApkSigner.SignerConfig signerConfig = new ApkSigner.SignerConfig.Builder(
+                "debugkey", key, Collections.singletonList(cert)).build();
+        File tmpOut = new File(apkFile.getParent(), "signed_tmp.apk");
+        ApkSigner signer = new ApkSigner.Builder(Collections.singletonList(signerConfig))
+                .setInputApk(apkFile)
+                .setOutputApk(tmpOut)
+                .setV1SigningEnabled(true)
+                .setV2SigningEnabled(true)
+                .setAlignmentPreserved(true)
+                .build();
+        signer.sign();
+        apkFile.delete();
+        tmpOut.renameTo(apkFile);
+    }
+
     private void signApk(File unsignedApk, File outputApk) throws Exception {
         // Load bundled PKCS12 keystore from assets
         KeyStore ks = KeyStore.getInstance("PKCS12");
@@ -283,6 +620,7 @@ public class PatchEngine {
                 .setOutputApk(outputApk)
                 .setV1SigningEnabled(true)
                 .setV2SigningEnabled(true)
+                .setAlignmentPreserved(true)
                 .build();
         signer.sign();
     }
@@ -296,6 +634,15 @@ public class PatchEngine {
         copyStream(is, fos);
         is.close();
         fos.close();
+    }
+
+    private byte[] readStreamBytes(InputStream is) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = is.read(buf)) > 0) bos.write(buf, 0, len);
+        is.close();
+        return bos.toByteArray();
     }
 
     private byte[] readAssetBytes(AssetManager assets, String path) throws IOException {

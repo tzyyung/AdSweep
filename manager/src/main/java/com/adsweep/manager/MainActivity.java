@@ -438,6 +438,7 @@ public class MainActivity extends Activity {
                 .setOutputApk(output)
                 .setV1SigningEnabled(true)
                 .setV2SigningEnabled(true)
+                .setAlignmentPreserved(true)
                 .build().sign();
     }
 

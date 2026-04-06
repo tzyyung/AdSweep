@@ -27,12 +27,16 @@ public class ManifestPatcher {
 
             boolean modified = false;
 
-            // Set extractNativeLibs=true FIRST (before any string modifications)
+            // Set extractNativeLibs=true
             if (setBooleanAttribute(manifestBytes, 0x010104ea, true)) {
                 modified = true;
                 Log.i(TAG, "Set extractNativeLibs=true");
-            } else {
-                Log.w(TAG, "extractNativeLibs not found in manifest");
+            }
+
+            // Set isSplitRequired=false (allows installing without split APKs)
+            if (setBooleanAttribute(manifestBytes, 0x01010591, false)) {
+                modified = true;
+                Log.i(TAG, "Set isSplitRequired=false");
             }
 
             // Remove requiredSplitTypes string attribute
