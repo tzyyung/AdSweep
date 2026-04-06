@@ -1,12 +1,7 @@
 package com.adsweep.hook;
 
-import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
-import android.util.DisplayMetrics;
 import android.util.Log;
-import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.WebView;
 
 import com.adsweep.reporter.DetectionEvent;
@@ -19,14 +14,19 @@ import java.util.regex.Pattern;
 
 /**
  * Layer 3: Runtime behavior detection.
- * Hooks system APIs to detect suspicious ad-like behavior and reports
- * to FloatingReporter for user feedback.
+ *
+ * Instead of hooking high-frequency system APIs (ViewGroup.addView etc.),
+ * this monitors specific ad-related entry points:
+ * - WebView.loadUrl: detect ad URLs and report them
+ * - Ad callback interfaces: detect when ads are loaded/shown
+ *
+ * Only hooks low-frequency, ad-specific methods to avoid stability issues.
  */
 public class LayerThreeMonitor {
 
     private static final String TAG = "AdSweep.L3";
 
-    // Known ad domain patterns for WebView URL detection
+    // Known ad domain patterns
     private static final Pattern AD_URL_PATTERN = Pattern.compile(
             "(?i)(doubleclick|googlesyndication|googleadservices|" +
             "facebook\\.com/tr|fbcdn.*ad|" +
@@ -36,102 +36,41 @@ public class LayerThreeMonitor {
             "smaato|tapjoy|fyber|digitalturbine)"
     );
 
-    // Classes that we've already seen — don't report duplicates
-    private final Set<String> reportedClasses = new HashSet<>();
+    // Known ad callback class patterns to probe at runtime
+    private static final String[][] AD_CALLBACK_CLASSES = {
+            // {className, methodName, description}
+            {"com.google.android.gms.ads.AdListener", "onAdLoaded", "AdMob ad loaded"},
+            {"com.google.android.gms.ads.AdListener", "onAdOpened", "AdMob ad opened"},
+            {"com.facebook.ads.AdListener", "onAdLoaded", "Facebook ad loaded"},
+            {"com.applovin.mediation.MaxAdListener", "onAdLoaded", "AppLovin ad loaded"},
+            {"com.applovin.mediation.MaxAdListener", "onAdDisplayed", "AppLovin ad displayed"},
+            {"com.ironsource.mediationsdk.logger.IronSourceError", "<init>", "IronSource error"},
+    };
 
     private final Context context;
-    private final String appPackage;
-    private int screenHeight;
+    private final Set<String> reportedUrls = new HashSet<>();
 
     public LayerThreeMonitor(Context context) {
         this.context = context;
-        this.appPackage = context.getPackageName();
-        DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        this.screenHeight = dm.heightPixels;
     }
 
     /**
-     * Install runtime behavior monitors on system APIs.
+     * Install lightweight runtime monitors.
      */
     public void installMonitors() {
         Log.i(TAG, "Installing Layer 3 monitors...");
         int installed = 0;
 
-        installed += hookViewGroupAddView() ? 1 : 0;
+        // Monitor 1: WebView.loadUrl — detect ad URLs
         installed += hookWebViewLoadUrl() ? 1 : 0;
-        installed += hookActivityStartActivity() ? 1 : 0;
+
+        // Monitor 2: Ad callback methods — detect when ads are loaded
+        installed += hookAdCallbacks();
 
         Log.i(TAG, "Layer 3: " + installed + " monitors installed");
     }
 
-    // --- ViewGroup.addView ---
-
-    private boolean hookViewGroupAddView() {
-        try {
-            Method target = ViewGroup.class.getMethod("addView", View.class);
-            AddViewCallback callback = new AddViewCallback(this);
-            Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
-            Method backup = HookEngine.hook(target, callback, callbackMethod);
-            if (backup != null) {
-                callback.setBackupMethod(backup);
-                Log.i(TAG, "Hooked: ViewGroup.addView");
-                return true;
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to hook ViewGroup.addView", e);
-        }
-        return false;
-    }
-
-    static class AddViewCallback extends HookCallback {
-        private final LayerThreeMonitor monitor;
-
-        AddViewCallback(LayerThreeMonitor monitor) {
-            this.monitor = monitor;
-        }
-
-        @Override
-        public Object handleHook(Object[] args) {
-            try {
-                // Call original first
-                Object result = callOriginal(args);
-
-                // Then analyze: args[0] = this (ViewGroup), args[1] = child (View)
-                if (args.length >= 2 && args[1] instanceof View) {
-                    View child = (View) args[1];
-                    monitor.analyzeAddedView(child);
-                }
-                return result;
-            } catch (Exception e) {
-                // If original call fails, don't block the app
-                try { return callOriginal(args); } catch (Exception ex) { return null; }
-            }
-        }
-    }
-
-    private void analyzeAddedView(View child) {
-        // Check if this looks like a fullscreen ad overlay
-        child.post(() -> {
-            try {
-                int height = child.getHeight();
-                if (height <= 0) height = child.getMeasuredHeight();
-
-                // Only flag views that cover >70% of screen height
-                if (height > screenHeight * 0.7) {
-                    String callerClass = findAdCallerOnStack();
-                    if (callerClass != null && !reportedClasses.contains(callerClass)) {
-                        reportedClasses.add(callerClass);
-                        reportDetection(callerClass, "addView",
-                                "Fullscreen view added (" + height + "px)");
-                    }
-                }
-            } catch (Exception e) {
-                // Ignore analysis errors
-            }
-        });
-    }
-
-    // --- WebView.loadUrl ---
+    // --- WebView.loadUrl (low frequency, only when WebView loads a URL) ---
 
     private boolean hookWebViewLoadUrl() {
         try {
@@ -159,123 +98,115 @@ public class LayerThreeMonitor {
 
         @Override
         public Object handleHook(Object[] args) {
-            // args[0] = this (WebView), args[1] = url (String)
-            if (args.length >= 2 && args[1] instanceof String) {
-                String url = (String) args[1];
-                if (AD_URL_PATTERN.matcher(url).find()) {
-                    String callerClass = monitor.findAdCallerOnStack();
-                    if (callerClass != null) {
-                        monitor.reportDetection(callerClass, "loadUrl",
-                                "Ad URL: " + truncate(url, 60));
-                    }
-                    // Block the ad URL load
-                    Log.i("AdSweep.L3", "Blocked ad URL: " + truncate(url, 80));
-                    return null;
-                }
-            }
-
             try {
+                if (args.length >= 2 && args[1] instanceof String) {
+                    String url = (String) args[1];
+                    if (AD_URL_PATTERN.matcher(url).find()) {
+                        String shortUrl = url.length() > 60 ? url.substring(0, 60) + "..." : url;
+                        Log.i("AdSweep.L3", "Blocked ad URL: " + shortUrl);
+
+                        // Report to user (only once per domain)
+                        String domain = extractDomain(url);
+                        if (domain != null && !monitor.reportedUrls.contains(domain)) {
+                            monitor.reportedUrls.add(domain);
+                            monitor.reportDetection("WebView", "loadUrl",
+                                    "webview_ad_url", "Ad URL: " + shortUrl);
+                        }
+
+                        // Block the ad URL — don't call original
+                        return null;
+                    }
+                }
                 return callOriginal(args);
+            } catch (Exception e) {
+                try { return callOriginal(args); } catch (Exception ex) { return null; }
+            }
+        }
+
+        private String extractDomain(String url) {
+            try {
+                int start = url.indexOf("//");
+                if (start < 0) return null;
+                start += 2;
+                int end = url.indexOf("/", start);
+                return end > start ? url.substring(start, end) : url.substring(start);
             } catch (Exception e) {
                 return null;
             }
         }
-
-        private String truncate(String s, int max) {
-            return s.length() > max ? s.substring(0, max) + "..." : s;
-        }
     }
 
-    // --- Activity.startActivity ---
+    // --- Ad callback class probing ---
 
-    private boolean hookActivityStartActivity() {
-        try {
-            Method target = Activity.class.getMethod("startActivity", Intent.class);
-            StartActivityCallback callback = new StartActivityCallback(this);
-            Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
-            Method backup = HookEngine.hook(target, callback, callbackMethod);
-            if (backup != null) {
-                callback.setBackupMethod(backup);
-                Log.i(TAG, "Hooked: Activity.startActivity");
-                return true;
+    private int hookAdCallbacks() {
+        ClassLoader cl = context.getClassLoader();
+        int count = 0;
+
+        for (String[] entry : AD_CALLBACK_CLASSES) {
+            String className = entry[0];
+            String methodName = entry[1];
+            String description = entry[2];
+
+            try {
+                Class<?> clazz = cl.loadClass(className);
+                for (Method m : clazz.getDeclaredMethods()) {
+                    if (m.getName().equals(methodName)) {
+                        AdCallbackDetector detector = new AdCallbackDetector(this, description);
+                        Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
+                        Method backup = HookEngine.hook(m, detector, callbackMethod);
+                        if (backup != null) {
+                            detector.setBackupMethod(backup);
+                            Log.i(TAG, "Monitoring: " + className + "." + methodName);
+                            count++;
+                        }
+                        break;
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                // SDK not present — skip
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to monitor " + className + "." + methodName, e);
             }
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to hook Activity.startActivity", e);
         }
-        return false;
+        return count;
     }
 
-    static class StartActivityCallback extends HookCallback {
+    static class AdCallbackDetector extends HookCallback {
         private final LayerThreeMonitor monitor;
+        private final String description;
 
-        StartActivityCallback(LayerThreeMonitor monitor) {
+        AdCallbackDetector(LayerThreeMonitor monitor, String description) {
             this.monitor = monitor;
+            this.description = description;
         }
 
         @Override
         public Object handleHook(Object[] args) {
-            // args[0] = this (Activity), args[1] = intent
-            if (args.length >= 2 && args[1] instanceof Intent) {
-                Intent intent = (Intent) args[1];
-                String targetComponent = intent.getComponent() != null
-                        ? intent.getComponent().getClassName() : "";
-
-                // Flag if the target activity is not part of the host app
-                if (!targetComponent.isEmpty() && !targetComponent.startsWith(monitor.appPackage)) {
-                    String callerClass = monitor.findAdCallerOnStack();
-                    if (callerClass != null && !monitor.reportedClasses.contains(targetComponent)) {
-                        monitor.reportedClasses.add(targetComponent);
-                        monitor.reportDetection(callerClass, "startActivity",
-                                "External activity: " + targetComponent);
-                    }
-                }
-            }
-
             try {
-                return callOriginal(args);
+                // Let the callback run normally, but report the detection
+                Object result = callOriginal(args);
+
+                String callerClass = args.length > 0 && args[0] != null
+                        ? args[0].getClass().getName() : "unknown";
+                monitor.reportDetection(callerClass, description,
+                        "ad_callback", description);
+
+                return result;
             } catch (Exception e) {
-                return null;
+                try { return callOriginal(args); } catch (Exception ex) { return null; }
             }
         }
     }
 
     // --- Helpers ---
 
-    /**
-     * Walk the call stack to find an ad-related caller class.
-     */
-    private String findAdCallerOnStack() {
-        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stack) {
-            String cls = element.getClassName().toLowerCase();
-            if (cls.contains("ad") || cls.contains("banner") || cls.contains("interstitial")
-                    || cls.contains("rewarded") || cls.contains("mediation")
-                    || cls.contains("applovin") || cls.contains("admob")
-                    || cls.contains("facebook.ads") || cls.contains("ironsource")
-                    || cls.contains("vungle") || cls.contains("unity3d.ads")) {
-                // Skip our own classes
-                if (cls.startsWith("com.adsweep")) continue;
-                return element.getClassName();
-            }
-        }
-        return null;
-    }
-
-    private void reportDetection(String callerClass, String hookType, String description) {
+    private void reportDetection(String callerClass, String callerMethod,
+                                  String hookType, String description) {
         FloatingReporter reporter = FloatingReporter.getInstance();
-        if (reporter == null) return;
-
-        // Extract method name from caller
-        String methodName = "unknown";
-        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-        for (StackTraceElement element : stack) {
-            if (element.getClassName().equals(callerClass)) {
-                methodName = element.getMethodName();
-                break;
-            }
+        if (reporter != null) {
+            DetectionEvent event = new DetectionEvent(callerClass, callerMethod,
+                    hookType, description);
+            reporter.report(event);
         }
-
-        DetectionEvent event = new DetectionEvent(callerClass, methodName, hookType, description);
-        reporter.report(event);
     }
 }

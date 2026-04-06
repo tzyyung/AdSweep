@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
+import com.adsweep.hook.LayerThreeMonitor;
 import com.adsweep.reporter.FloatingReporter;
 
 /**
@@ -53,11 +54,18 @@ public final class AdSweep {
         hookManager = new HookManager(context);
         hookManager.initialize();
 
-        // Initialize floating reporter (for future Layer 3 use and Settings)
+        // Initialize Layer 3: floating reporter + lightweight runtime monitors
         try {
             FloatingReporter.init(context, hookManager.getRuleStore());
         } catch (Throwable t) {
             Log.w(TAG, "FloatingReporter init failed (non-critical)", t);
+        }
+
+        try {
+            LayerThreeMonitor l3 = new LayerThreeMonitor(context);
+            l3.installMonitors();
+        } catch (Throwable t) {
+            Log.w(TAG, "Layer 3 init failed (non-critical)", t);
         }
 
         initialized = true;
