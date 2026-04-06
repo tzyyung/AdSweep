@@ -257,9 +257,15 @@ def fix_decompile_artifacts(decompiled_dir: str):
                 continue
 
             original = content
-            # <bitmap android:src="@null" /> → <color android:color="@android:color/transparent" />
+            # Replace any <bitmap ... android:src="@null" ... /> with transparent color
             content = re.sub(
-                r'<bitmap\s+android:src="@null"\s*/>',
+                r'<bitmap\s[^>]*android:src="@null"[^>]*/\s*>',
+                '<color android:color="@android:color/transparent" />',
+                content
+            )
+            # Replace any <nine-patch ... android:src="@null" ... /> with transparent color
+            content = re.sub(
+                r'<nine-patch\s[^>]*android:src="@null"[^>]*/\s*>',
                 '<color android:color="@android:color/transparent" />',
                 content
             )
@@ -267,6 +273,11 @@ def fix_decompile_artifacts(decompiled_dir: str):
             content = content.replace(
                 'android:drawable="@null"',
                 'android:drawable="@android:color/transparent"'
+            )
+            # android:src="@null" in standalone bitmap tags (top-level)
+            content = content.replace(
+                'android:src="@null"',
+                'android:src="@android:color/transparent"'
             )
 
             if content != original:

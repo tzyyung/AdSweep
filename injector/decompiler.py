@@ -7,10 +7,17 @@ import os
 from config import APKTOOL
 
 
-def decompile(apk_path: str, output_dir: str) -> bool:
-    """Decompile an APK using apktool."""
-    print(f"[*] Decompiling {apk_path}...")
+def decompile(apk_path: str, output_dir: str, no_res: bool = True) -> bool:
+    """Decompile an APK using apktool.
+
+    Args:
+        no_res: If True, don't decode resources (avoids @null corruption).
+                Resources stay in binary format, only smali is decompiled.
+    """
+    print(f"[*] Decompiling {apk_path}..." + (" (no-res)" if no_res else ""))
     cmd = [APKTOOL, "d", apk_path, "-o", output_dir, "-f"]
+    if no_res:
+        cmd.append("-r")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"[!] Decompile failed:\n{result.stderr}")
