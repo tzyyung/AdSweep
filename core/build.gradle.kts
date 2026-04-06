@@ -45,5 +45,5 @@ android {
 }
 
 dependencies {
-    implementation("org.lsposed.lsplant:lsplant:7.0.0")
+    implementation("org.lsposed.lsplant:lsplant-standalone:6.4")
 }
