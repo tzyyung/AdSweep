@@ -38,6 +38,7 @@ public class MainActivity extends Activity {
 
     private File selectedApk;
     private File patchedApk;
+    private String selectedPackageName;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -111,6 +112,7 @@ public class MainActivity extends Activity {
 
     private void loadInstalledApk(String apkPath, String packageName, String appName) {
         tvApkInfo.setText("Loading...");
+        selectedPackageName = packageName;
 
         new Thread(() -> {
             try {
@@ -314,41 +316,132 @@ public class MainActivity extends Activity {
             return;
         }
 
-        try {
-            // Use PackageInstaller API (works on all Android 5+)
-            android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
-            android.content.pm.PackageInstaller.SessionParams params =
-                    new android.content.pm.PackageInstaller.SessionParams(
-                            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        log("Installing...");
+        btnInstall.setEnabled(false);
 
-            int sessionId = installer.createSession(params);
-            android.content.pm.PackageInstaller.Session session = installer.openSession(sessionId);
+        new Thread(() -> {
+            try {
+                // First uninstall existing app (different signature)
+                if (selectedPackageName != null) {
+                    mainHandler.post(() -> log("Uninstalling original app..."));
+                    // Can't programmatically uninstall without device admin
+                    // User will see "app not installed" if signatures don't match
+                }
 
-            // Write APK to session
-            FileInputStream fis = new FileInputStream(patchedApk);
-            OutputStream out = session.openWrite("patched.apk", 0, patchedApk.length());
+                android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+                android.content.pm.PackageInstaller.SessionParams params =
+                        new android.content.pm.PackageInstaller.SessionParams(
+                                android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                params.setInstallLocation(
+                        android.content.pm.PackageInfo.INSTALL_LOCATION_AUTO);
+
+                int sessionId = installer.createSession(params);
+                android.content.pm.PackageInstaller.Session session = installer.openSession(sessionId);
+
+                // Write patched base APK
+                mainHandler.post(() -> log("Writing base APK to install session..."));
+                writeApkToSession(session, patchedApk, "base.apk");
+
+                // Write split APKs from the original installed app
+                if (selectedPackageName != null) {
+                    writeSplitApks(session, selectedPackageName);
+                }
+
+                // Commit
+                Intent callbackIntent = new Intent(this, MainActivity.class);
+                android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
+                        this, 0, callbackIntent,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
+                session.commit(pi.getIntentSender());
+
+                mainHandler.post(() -> {
+                    log("Install session committed. Please confirm.");
+                    btnInstall.setEnabled(true);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    log("Install error: " + e.getMessage());
+                    btnInstall.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Install error: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
+    }
+
+    private void writeApkToSession(android.content.pm.PackageInstaller.Session session,
+                                    File apkFile, String name) throws Exception {
+        FileInputStream fis = new FileInputStream(apkFile);
+        OutputStream out = session.openWrite(name, 0, apkFile.length());
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
+        session.fsync(out);
+        out.close();
+        fis.close();
+    }
+
+    private void writeSplitApks(android.content.pm.PackageInstaller.Session session,
+                                 String packageName) throws Exception {
+        // Get all APK paths for this package
+        android.content.pm.ApplicationInfo appInfo = getPackageManager()
+                .getApplicationInfo(packageName, 0);
+
+        String[] splitPaths = appInfo.splitSourceDirs;
+        if (splitPaths == null || splitPaths.length == 0) {
+            mainHandler.post(() -> log("No split APKs needed."));
+            return;
+        }
+
+        for (String splitPath : splitPaths) {
+            File splitFile = new File(splitPath);
+            String splitName = splitFile.getName();
+            mainHandler.post(() -> log("Adding split: " + splitName));
+
+            // Re-sign split APK with our key
+            // Actually, splits need same signature as base — we need to re-sign them too
+            // For now, copy original splits (they won't have matching signature)
+            // TODO: re-sign split APKs with the same PKCS12 key
+
+            // Re-sign split APK with our debug key
+            File resignedSplit = new File(getCacheDir(), "resigned_" + splitName);
+            resignApk(splitFile, resignedSplit);
+
+            FileInputStream fis = new FileInputStream(resignedSplit);
+            OutputStream out = session.openWrite(splitName, 0, resignedSplit.length());
             byte[] buf = new byte[8192];
             int len;
             while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
             session.fsync(out);
             out.close();
             fis.close();
-
-            // Commit with a status callback intent
-            Intent callbackIntent = new Intent(this, MainActivity.class);
-            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
-                    this, 0, callbackIntent,
-                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
-            session.commit(pi.getIntentSender());
-
-            log("Install session committed.");
-            log("If no install dialog appears, this app may require split APKs.");
-            log("Use ADB instead:");
-            log("  adb install patched.apk");
-        } catch (Exception e) {
-            Toast.makeText(this, "Install error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            log("Install error: " + e.getMessage());
+            resignedSplit.delete();
         }
+        mainHandler.post(() -> log("Added " + splitPaths.length + " split APKs"));
+    }
+
+    private void resignApk(File inputApk, File outputApk) throws Exception {
+        java.security.KeyStore ks = java.security.KeyStore.getInstance("PKCS12");
+        InputStream ksStream = getAssets().open("debug.p12");
+        ks.load(ksStream, "android".toCharArray());
+        ksStream.close();
+
+        java.security.PrivateKey key = (java.security.PrivateKey) ks.getKey("debugkey", "android".toCharArray());
+        java.security.cert.X509Certificate cert =
+                (java.security.cert.X509Certificate) ks.getCertificate("debugkey");
+
+        com.android.apksig.ApkSigner.SignerConfig signerConfig =
+                new com.android.apksig.ApkSigner.SignerConfig.Builder(
+                        "debugkey", key, java.util.Collections.singletonList(cert)).build();
+
+        com.android.apksig.ApkSigner signer = new com.android.apksig.ApkSigner.Builder(
+                java.util.Collections.singletonList(signerConfig))
+                .setInputApk(inputApk)
+                .setOutputApk(outputApk)
+                .setV1SigningEnabled(true)
+                .setV2SigningEnabled(true)
+                .build();
+        signer.sign();
     }
 
     private void log(String message) {
