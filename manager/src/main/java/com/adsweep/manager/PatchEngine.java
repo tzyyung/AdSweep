@@ -91,6 +91,23 @@ public class PatchEngine {
         // Step 2: Find Application class
         progress("Finding Application class...");
         String appClass = findApplicationClass(decompDir);
+        // Fallback: try PackageManager
+        if (appClass == null) {
+            try {
+                android.content.pm.ApplicationInfo ai = context.getPackageManager()
+                        .getPackageArchiveInfo(inputApk.getAbsolutePath(), 0)
+                        .applicationInfo;
+                if (ai.className != null) {
+                    appClass = ai.className;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "PackageManager fallback failed", e);
+            }
+        }
+        if (appClass == null) {
+            // Last resort: search smali for Application subclass
+            appClass = findApplicationFromSmali(decompDir);
+        }
         if (appClass == null) {
             callback.onError("Could not find Application class");
             return;
@@ -322,6 +339,48 @@ public class PatchEngine {
         };
         Process p = Runtime.getRuntime().exec(cmd);
         p.waitFor();
+    }
+
+    // --- Find Application class from smali ---
+
+    private String findApplicationFromSmali(File decompDir) {
+        // Search for classes that extend Application
+        File[] smaliDirs = decompDir.listFiles((d, n) -> n.startsWith("smali"));
+        if (smaliDirs == null) return null;
+        Arrays.sort(smaliDirs);
+
+        for (File smaliDir : smaliDirs) {
+            String result = searchForApplicationClass(smaliDir, smaliDir);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
+    private String searchForApplicationClass(File dir, File smaliRoot) {
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                String result = searchForApplicationClass(f, smaliRoot);
+                if (result != null) return result;
+            } else if (f.getName().endsWith(".smali")) {
+                try {
+                    BufferedReader reader = new BufferedReader(new FileReader(f));
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith(".super Landroid/app/Application;") ||
+                            line.startsWith(".super Landroidx/multidex/MultiDexApplication;")) {
+                            reader.close();
+                            // Convert file path to class name
+                            String rel = f.getAbsolutePath().substring(smaliRoot.getAbsolutePath().length() + 1);
+                            return rel.replace("/", ".").replace(".smali", "");
+                        }
+                    }
+                    reader.close();
+                } catch (Exception e) {}
+            }
+        }
+        return null;
     }
 
     // --- Utility methods ---
