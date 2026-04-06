@@ -25,6 +25,7 @@ public class MainActivity extends Activity {
 
     private static final int REQUEST_APK = 1001;
     private static final int REQUEST_INSTALLED_APP = 1002;
+    private static final int REQUEST_UNINSTALL = 1003;
 
     private TextView tvApkInfo;
     private TextView tvScanResults;
@@ -39,6 +40,7 @@ public class MainActivity extends Activity {
     private File selectedApk;
     private File patchedApk;
     private String selectedPackageName;
+    private boolean pendingInstallSession = false;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -100,6 +102,14 @@ public class MainActivity extends Activity {
             if (uri != null) {
                 copyAndScanApk(uri);
             }
+        } else if (requestCode == REQUEST_UNINSTALL) {
+            // After uninstall, continue with installation
+            if (pendingInstallSession) {
+                pendingInstallSession = false;
+                log("Uninstall complete. Installing patched version...");
+                installPatched();
+            }
+            return;
         } else if (requestCode == REQUEST_INSTALLED_APP) {
             String apkPath = data.getStringExtra(AppListActivity.RESULT_APK_PATH);
             String pkgName = data.getStringExtra(AppListActivity.RESULT_PACKAGE_NAME);
@@ -323,9 +333,22 @@ public class MainActivity extends Activity {
             try {
                 // First uninstall existing app (different signature)
                 if (selectedPackageName != null) {
-                    mainHandler.post(() -> log("Uninstalling original app..."));
-                    // Can't programmatically uninstall without device admin
-                    // User will see "app not installed" if signatures don't match
+                    try {
+                        getPackageManager().getPackageInfo(selectedPackageName, 0);
+                        // App is installed — need to uninstall first
+                        mainHandler.post(() -> {
+                            log("Please uninstall original app first...");
+                            Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
+                                    Uri.parse("package:" + selectedPackageName));
+                            startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
+                        });
+                        // Wait for uninstall to complete
+                        // We'll continue installation in onActivityResult
+                        pendingInstallSession = true;
+                        return;
+                    } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                        // Not installed, continue with install
+                    }
                 }
 
                 android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
