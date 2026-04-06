@@ -18,6 +18,8 @@ public class Rule {
     public String source;       // BUILTIN, LAYER2_SCAN, LAYER3_USER, MANUAL
     public String sdkName;
     public String notes;
+    public int priority;        // Higher = processed first (default 50)
+    public JSONObject condition; // Optional: condition for conditional rules
 
     public Rule() {
         this.enabled = true;
@@ -35,6 +37,11 @@ public class Rule {
         rule.source = json.optString("source", "BUILTIN");
         rule.sdkName = json.optString("sdkName", "");
         rule.notes = json.optString("notes", "");
+
+        rule.priority = json.optInt("priority", 50);
+        if (json.has("condition")) {
+            rule.condition = json.getJSONObject("condition");
+        }
 
         if (json.has("paramTypes")) {
             JSONArray arr = json.getJSONArray("paramTypes");
@@ -57,6 +64,8 @@ public class Rule {
         json.put("source", source);
         if (sdkName != null && !sdkName.isEmpty()) json.put("sdkName", sdkName);
         if (notes != null && !notes.isEmpty()) json.put("notes", notes);
+        if (priority != 50) json.put("priority", priority);
+        if (condition != null) json.put("condition", condition);
         if (paramTypes != null) {
             JSONArray arr = new JSONArray();
             for (String pt : paramTypes) arr.put(pt);

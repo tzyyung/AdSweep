@@ -226,6 +226,36 @@
       "enabled": true,
       "source": "BUILTIN",
       "sdkName": "Google UMP"
+    },
+    {
+      "id": "network-okhttp-block",
+      "className": "okhttp3.OkHttpClient",
+      "methodName": "newCall",
+      "condition": {
+        "type": "URL_MATCHES",
+        "argIndex": 1,
+        "extract": "url"
+      },
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Network (OkHttp)",
+      "notes": "Block ad domain requests via OkHttp"
+    },
+    {
+      "id": "network-url-block",
+      "className": "java.net.URL",
+      "methodName": "openConnection",
+      "condition": {
+        "type": "URL_MATCHES",
+        "argIndex": 0,
+        "extract": "toString"
+      },
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Network (HttpURLConnection)",
+      "notes": "Block ad domain requests via HttpURLConnection"
     }
   ]
 }

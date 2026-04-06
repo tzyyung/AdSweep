@@ -3,6 +3,9 @@ package com.adsweep.hook;
 import android.content.Context;
 import android.util.Log;
 
+import com.adsweep.engine.DomainMatcher;
+import com.adsweep.engine.HookRule;
+import com.adsweep.engine.RuleParser;
 import com.adsweep.rules.Rule;
 import com.adsweep.rules.RuleStore;
 
@@ -13,14 +16,18 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Orchestrates hook installation across all detection layers.
+ * Uses the rule engine for conditional rules and BlockCallback for simple rules.
  */
 public class HookManager {
 
     private static final String TAG = "AdSweep.HookManager";
+    private static final String DOMAINS_ASSET = "adsweep_domains.txt";
 
     private final Context appContext;
     private final RuleStore ruleStore;
     private final Map<String, Method> backupMethods = new ConcurrentHashMap<>();
+    private DomainMatcher domainMatcher;
+    private RuleParser ruleParser;
 
     public HookManager(Context context) {
         this.appContext = context.getApplicationContext();
@@ -36,9 +43,14 @@ public class HookManager {
             return;
         }
 
+        // Load domain list for URL_MATCHES conditions
+        domainMatcher = DomainMatcher.fromAsset(appContext, DOMAINS_ASSET);
+        ruleParser = new RuleParser(domainMatcher);
+
         // Layer 1: Hook all known SDK methods found in this app
         List<Rule> rules = ruleStore.getActiveRules();
-        Log.i(TAG, "Loading " + rules.size() + " rules");
+        Log.i(TAG, "Loading " + rules.size() + " rules"
+                + (domainMatcher.isEmpty() ? "" : " (domains: " + domainMatcher.size() + ")"));
 
         ClassLoader cl = appContext.getClassLoader();
         int hooked = 0;
@@ -55,7 +67,7 @@ public class HookManager {
                     continue;
                 }
 
-                if (installHook(rule, targetMethod)) {
+                if (installHook(rule, targetMethod, targetClass)) {
                     hooked++;
                 }
             } catch (ClassNotFoundException e) {
@@ -70,11 +82,22 @@ public class HookManager {
 
     /**
      * Install a hook for a specific rule and target method.
+     * Uses RuleBasedCallback for conditional rules, BlockCallback for simple rules.
      */
-    public boolean installHook(Rule rule, Method targetMethod) {
+    public boolean installHook(Rule rule, Method targetMethod, Class<?> targetClass) {
         String key = rule.className + "." + rule.methodName;
 
-        BlockCallback callback = new BlockCallback(key, rule.action);
+        HookCallback callback;
+        if (rule.condition != null && ruleParser != null) {
+            // Conditional rule → use rule engine
+            HookRule hookRule = ruleParser.parse(rule);
+            callback = new RuleBasedCallback(hookRule, targetMethod, targetClass,
+                    appContext.getPackageName());
+        } else {
+            // Simple rule → use existing BlockCallback
+            callback = new BlockCallback(key, rule.action);
+        }
+
         try {
             Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
             Method backup = HookEngine.hook(targetMethod, callback, callbackMethod);
@@ -82,7 +105,8 @@ public class HookManager {
             if (backup != null) {
                 callback.setBackupMethod(backup);
                 backupMethods.put(key, backup);
-                Log.i(TAG, "Hooked: " + key + " [" + rule.action + "]");
+                String condInfo = rule.condition != null ? " [conditional]" : "";
+                Log.i(TAG, "Hooked: " + key + " [" + rule.action + "]" + condInfo);
                 return true;
             } else {
                 Log.w(TAG, "Failed to hook: " + key);
@@ -94,20 +118,16 @@ public class HookManager {
         }
     }
 
-    /**
-     * Remove a hook.
-     */
+    // Backward compat: 2-arg version delegates to 3-arg
+    public boolean installHook(Rule rule, Method targetMethod) {
+        return installHook(rule, targetMethod, targetMethod.getDeclaringClass());
+    }
+
     public boolean removeHook(String className, String methodName) {
-        String key = className + "." + methodName;
-        // The actual unhook would need a reference to the original Member
-        // For now, this is a placeholder
-        backupMethods.remove(key);
+        backupMethods.remove(className + "." + methodName);
         return true;
     }
 
-    /**
-     * Resolve a method by name and parameter types.
-     */
     private Method resolveMethod(Class<?> clazz, String methodName, String[] paramTypes) {
         if (paramTypes != null && paramTypes.length > 0) {
             try {
@@ -120,8 +140,6 @@ public class HookManager {
                 // Fall through to try without params
             }
         }
-
-        // Try to find method by name only (first match)
         for (Method m : clazz.getDeclaredMethods()) {
             if (m.getName().equals(methodName)) {
                 return m;
@@ -145,11 +163,7 @@ public class HookManager {
         }
     }
 
-    public RuleStore getRuleStore() {
-        return ruleStore;
-    }
-
-    public int getActiveHookCount() {
-        return backupMethods.size();
-    }
+    public RuleStore getRuleStore() { return ruleStore; }
+    public DomainMatcher getDomainMatcher() { return domainMatcher; }
+    public int getActiveHookCount() { return backupMethods.size(); }
 }
