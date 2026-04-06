@@ -29,6 +29,13 @@
 
         <activity android:name=".AppListActivity" />
 
+        <receiver android:name=".InstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.adsweep.manager.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

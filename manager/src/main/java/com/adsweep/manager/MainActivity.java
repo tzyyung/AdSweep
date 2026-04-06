@@ -386,9 +386,9 @@ public class MainActivity extends Activity {
                     }
                 }));
 
-                // Commit
-                Intent cb = new Intent(this, MainActivity.class);
-                PendingIntent pi = PendingIntent.getActivity(this, 0, cb,
+                // Commit with a broadcast receiver to capture the status
+                Intent cb = new Intent("com.adsweep.manager.INSTALL_STATUS");
+                PendingIntent pi = PendingIntent.getBroadcast(this, sessionId, cb,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
                 session.commit(pi.getIntentSender());
 
