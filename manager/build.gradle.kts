@@ -29,8 +29,9 @@ android {
 dependencies {
     // apktool for on-device APK decompile/recompile
     implementation("org.apktool:apktool-lib:2.9.3")
-    // baksmali for DEX → smali
+    // smali/baksmali for DEX ↔ smali
     implementation("com.android.tools.smali:smali-baksmali:3.0.7")
+    implementation("com.android.tools.smali:smali:3.0.7")
     // APK signing
     implementation("com.android.tools.build:apksig:8.7.3")
 }

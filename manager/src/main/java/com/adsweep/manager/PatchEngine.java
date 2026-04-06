@@ -133,14 +133,11 @@ public class PatchEngine {
         // Step 6: Patch apktool.yml
         patchApktoolYml(decompDir);
 
-        // Step 7: Recompile
-        progress("Recompiling APK...");
+        // Step 7: Build patched APK by modifying original APK directly
+        //   (apktool build has smali version issues on Android)
+        progress("Building patched APK...");
         File unsignedApk = new File(workDir, "unsigned.apk");
-        recompileApk(decompDir, unsignedApk);
-
-        // Step 7b: Inject DEX into APK (post-build, avoids smali version mismatch)
-        progress("Injecting AdSweep DEX...");
-        injectDexIntoApk(unsignedApk);
+        buildPatchedApk(inputApk, decompDir, unsignedApk);
 
         // Step 8: Sign
         progress("Signing APK...");
@@ -344,6 +341,125 @@ public class PatchEngine {
         };
         Process p = Runtime.getRuntime().exec(cmd);
         p.waitFor();
+    }
+
+    // --- Build patched APK by modifying original APK ---
+
+    private void buildPatchedApk(File originalApk, File decompDir, File outputApk) throws Exception {
+        AssetManager assets = context.getAssets();
+
+        // Reassemble modified smali back to DEX
+        progress("Assembling modified smali...");
+        Map<String, byte[]> modifiedDexes = new HashMap<>();
+        File[] smaliDirs = decompDir.listFiles((d, n) -> n.startsWith("smali"));
+        if (smaliDirs != null) {
+            Arrays.sort(smaliDirs);
+            for (File smaliDir : smaliDirs) {
+                String dexName;
+                if (smaliDir.getName().equals("smali")) {
+                    dexName = "classes.dex";
+                } else {
+                    dexName = smaliDir.getName().replace("smali_", "") + ".dex";
+                }
+                File dexFile = new File(decompDir, dexName + ".tmp");
+                assembleSmali(smaliDir, dexFile);
+                modifiedDexes.put(dexName, readBytes(dexFile));
+                dexFile.delete();
+            }
+        }
+
+        // Read AdSweep payload DEX
+        File payloadDex = new File(context.getCacheDir(), "adsweep_payload.dex");
+        copyAsset(assets, "payload/classes.dex", payloadDex);
+        int nextDexNum = modifiedDexes.size() + 1;
+        String payloadDexName = "classes" + nextDexNum + ".dex";
+        modifiedDexes.put(payloadDexName, readBytes(payloadDex));
+        payloadDex.delete();
+        progress("Added " + payloadDexName);
+
+        // Build output APK: copy original, replace DEX files, add .so + assets
+        progress("Building APK...");
+        try (ZipFile src = new ZipFile(originalApk);
+             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(outputApk))) {
+
+            Set<String> written = new HashSet<>();
+
+            // Copy original entries (skip DEX files, we'll replace them)
+            Enumeration<? extends ZipEntry> entries = src.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (entry.getName().matches("classes\\d*\\.dex")) {
+                    continue; // Skip original DEX, use our reassembled ones
+                }
+                ZipEntry newEntry = new ZipEntry(entry.getName());
+                if (entry.getName().endsWith(".so")) {
+                    newEntry.setMethod(ZipEntry.STORED);
+                    newEntry.setSize(entry.getSize());
+                    newEntry.setCrc(entry.getCrc());
+                    newEntry.setCompressedSize(entry.getSize());
+                }
+                zos.putNextEntry(newEntry);
+                InputStream is = src.getInputStream(entry);
+                copyStream(is, zos);
+                is.close();
+                zos.closeEntry();
+                written.add(entry.getName());
+            }
+
+            // Write reassembled DEX files
+            for (Map.Entry<String, byte[]> dex : modifiedDexes.entrySet()) {
+                zos.putNextEntry(new ZipEntry(dex.getKey()));
+                zos.write(dex.getValue());
+                zos.closeEntry();
+            }
+
+            // Add .so files from payload
+            for (String abi : new String[]{"arm64-v8a", "armeabi-v7a"}) {
+                for (String soName : assets.list("payload/lib/" + abi)) {
+                    String entryName = "lib/" + abi + "/" + soName;
+                    if (!written.contains(entryName)) {
+                        zos.putNextEntry(new ZipEntry(entryName));
+                        InputStream is = assets.open("payload/lib/" + abi + "/" + soName);
+                        copyStream(is, zos);
+                        is.close();
+                        zos.closeEntry();
+                    }
+                }
+            }
+
+            // Add assets
+            for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
+                String entryName = "assets/" + name;
+                if (!written.contains(entryName)) {
+                    zos.putNextEntry(new ZipEntry(entryName));
+                    InputStream is = assets.open("payload/" + name);
+                    copyStream(is, zos);
+                    is.close();
+                    zos.closeEntry();
+                }
+            }
+        }
+    }
+
+    private void assembleSmali(File smaliDir, File outputDex) throws Exception {
+        com.android.tools.smali.smali.SmaliOptions options = new com.android.tools.smali.smali.SmaliOptions();
+        com.android.tools.smali.smali.Smali.assemble(options, smaliDir.getAbsolutePath(), outputDex.getAbsolutePath());
+    }
+
+    private byte[] readBytes(File f) throws IOException {
+        FileInputStream fis = new FileInputStream(f);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = fis.read(buf)) > 0) bos.write(buf, 0, len);
+        fis.close();
+        return bos.toByteArray();
+    }
+
+    private void copyStream(InputStream is, OutputStream os) throws IOException {
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = is.read(buf)) > 0) os.write(buf, 0, len);
     }
 
     // --- Copy payload without DEX (DEX injected post-build) ---
