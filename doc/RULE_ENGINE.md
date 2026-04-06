@@ -367,6 +367,522 @@ graph LR
 
 `HookManager` 根據有無 `condition` 選擇使用 `BlockCallback` 或 `ConditionalCallback`。
 
+## 規則引擎架構設計
+
+### 設計參考：Easy Rules
+
+[Easy Rules](https://github.com/j-easy/easy-rules) 是輕量級 Java 規則引擎（35KB），核心設計：
+
+```
+Rule = Condition（何時觸發）+ Action（做什麼）+ Priority（順序）
+Facts = 一組 key-value 資料
+RulesEngine = 遍歷 Rules → 評估 Condition → 執行 Action
+```
+
+**為什麼不直接用 Easy Rules：**
+- Easy Rules 是 **N 對 N**（多規則對多事實，遍歷評估），AdSweep 是 **1 對 1**（一個 Hook 綁一條規則）
+- 每次 Hook callback 都要建立 `Facts` 物件 → 不必要的開銷
+- 維護模式（2020 後停更），Android 相容問題無人修
+- `RulesEngine.fire()` 的遍歷機制對 AdSweep 沒用
+
+**借鑑 Easy Rules 的部分：**
+- 清楚的介面分離（Condition / Action / Rule）
+- 組合式設計（CompositeRule）
+- Priority 排序
+
+### AdSweep 規則引擎設計
+
+#### 核心介面
+
+```mermaid
+classDiagram
+    class RuleCondition {
+        <<interface>>
+        +evaluate(HookContext ctx) boolean
+    }
+
+    class RuleAction {
+        <<interface>>
+        +execute(HookContext ctx) Object
+    }
+
+    class HookRule {
+        +id: String
+        +condition: RuleCondition
+        +action: RuleAction
+        +priority: int
+        +enabled: boolean
+        +evaluate(HookContext ctx) boolean
+        +execute(HookContext ctx) Object
+    }
+
+    class HookContext {
+        +args: Object[]
+        +targetMethod: Method
+        +targetClass: Class
+        +backupMethod: Method
+        +packageName: String
+        +callOriginal() Object
+    }
+
+    HookRule --> RuleCondition
+    HookRule --> RuleAction
+    RuleCondition ..> HookContext
+    RuleAction ..> HookContext
+```
+
+#### 對比 Easy Rules
+
+| Easy Rules | AdSweep 規則引擎 | 差異原因 |
+|---|---|---|
+| `Rule` interface | `HookRule` class | 加入 Hook 特有的 backupMethod 等 |
+| `Facts` (Map) | `HookContext` (強型別) | 效能：避免 boxing/unboxing |
+| `RulesEngine.fire(rules, facts)` | `HookRule.evaluate() + execute()` | 1 對 1，不需要遍歷引擎 |
+| `@Condition` annotation | `RuleCondition` interface | 不用反射，直接呼叫 |
+| `@Action` annotation | `RuleAction` interface | 同上 |
+| `CompositeRule` | `CompositeCondition` | 組合條件（AND/OR） |
+
+#### HookContext — 取代 Easy Rules 的 Facts
+
+```java
+/**
+ * Hook callback 的上下文，取代 Easy Rules 的 Facts。
+ * 強型別，不用 Map，效能更好。
+ */
+public class HookContext {
+    public final Object[] args;           // 方法參數（args[0] = this for instance methods）
+    public final Method targetMethod;     // 被 Hook 的方法
+    public final Class<?> targetClass;    // 被 Hook 的 class
+    public final Method backupMethod;     // 原始方法（用於 callOriginal）
+    public final String packageName;      // 目前 App 的 package name
+
+    /** 呼叫原始方法 */
+    public Object callOriginal() throws Exception {
+        return backupMethod.invoke(null, args);
+    }
+
+    /** 取得第 N 個參數 */
+    public Object getArg(int index) {
+        return (index >= 0 && index < args.length) ? args[index] : null;
+    }
+
+    /** 取得參數的字串表示 */
+    public String getArgAsString(int index) {
+        Object arg = getArg(index);
+        return arg != null ? arg.toString() : null;
+    }
+
+    /** 用 reflection 從參數物件提取屬性 */
+    public Object extractField(int argIndex, String fieldPath) {
+        // e.g., extractField(1, "url.host") → args[1].url().host()
+        ...
+    }
+}
+```
+
+#### RuleCondition — 條件介面
+
+```java
+/**
+ * 規則條件介面。借鑑 Easy Rules 的 @Condition，但用介面取代 annotation。
+ */
+public interface RuleCondition {
+    boolean evaluate(HookContext ctx);
+}
+```
+
+#### 內建條件實作
+
+```mermaid
+classDiagram
+    class RuleCondition {
+        <<interface>>
+        +evaluate(HookContext) boolean
+    }
+
+    class AlwaysTrue {
+        +evaluate(ctx) boolean
+    }
+
+    class UrlMatchesCondition {
+        -domains: Set~String~
+        -argIndex: int
+        +evaluate(ctx) boolean
+    }
+
+    class ArgContainsCondition {
+        -argIndex: int
+        -patterns: List~String~
+        +evaluate(ctx) boolean
+    }
+
+    class ArgRegexCondition {
+        -argIndex: int
+        -pattern: Pattern
+        +evaluate(ctx) boolean
+    }
+
+    class CallerMatchesCondition {
+        -classPatterns: List~String~
+        +evaluate(ctx) boolean
+    }
+
+    class CompositeCondition {
+        -conditions: List~RuleCondition~
+        -operator: AND | OR
+        +evaluate(ctx) boolean
+    }
+
+    class NotCondition {
+        -inner: RuleCondition
+        +evaluate(ctx) boolean
+    }
+
+    RuleCondition <|.. AlwaysTrue
+    RuleCondition <|.. UrlMatchesCondition
+    RuleCondition <|.. ArgContainsCondition
+    RuleCondition <|.. ArgRegexCondition
+    RuleCondition <|.. CallerMatchesCondition
+    RuleCondition <|.. CompositeCondition
+    RuleCondition <|.. NotCondition
+    CompositeCondition o-- RuleCondition
+    NotCondition o-- RuleCondition
+```
+
+```java
+/** 域名比對 */
+public class UrlMatchesCondition implements RuleCondition {
+    private final Set<String> domains;
+    private final int argIndex;
+
+    public boolean evaluate(HookContext ctx) {
+        String url = ctx.getArgAsString(argIndex);
+        if (url == null) return false;
+        String domain = extractDomain(url);
+        return matchesDomainWithParents(domain, domains);
+    }
+}
+
+/** 組合條件（AND / OR） — 借鑑 Easy Rules 的 CompositeRule */
+public class CompositeCondition implements RuleCondition {
+    public enum Operator { AND, OR }
+    private final List<RuleCondition> conditions;
+    private final Operator operator;
+
+    public boolean evaluate(HookContext ctx) {
+        if (operator == Operator.AND) {
+            return conditions.stream().allMatch(c -> c.evaluate(ctx));
+        } else {
+            return conditions.stream().anyMatch(c -> c.evaluate(ctx));
+        }
+    }
+}
+
+/** 反轉條件 */
+public class NotCondition implements RuleCondition {
+    private final RuleCondition inner;
+
+    public boolean evaluate(HookContext ctx) {
+        return !inner.evaluate(ctx);
+    }
+}
+```
+
+#### RuleAction — 動作介面
+
+```java
+/**
+ * 規則動作介面。借鑑 Easy Rules 的 @Action。
+ */
+public interface RuleAction {
+    Object execute(HookContext ctx) throws Exception;
+}
+```
+
+#### 內建動作實作
+
+```mermaid
+classDiagram
+    class RuleAction {
+        <<interface>>
+        +execute(HookContext) Object
+    }
+
+    class BlockAction {
+        -returnValue: Object
+        +execute(ctx) Object
+    }
+
+    class CallAndModifyAction {
+        -returnValue: Object
+        +execute(ctx) Object
+    }
+
+    class MonitorAction {
+        -logger: DetectionLogger
+        +execute(ctx) Object
+    }
+
+    class PassThroughAction {
+        +execute(ctx) Object
+    }
+
+    RuleAction <|.. BlockAction
+    RuleAction <|.. CallAndModifyAction
+    RuleAction <|.. MonitorAction
+    RuleAction <|.. PassThroughAction
+```
+
+```java
+/** 無條件攔截（現有行為） */
+public class BlockAction implements RuleAction {
+    private final Object returnValue;  // null, true, false, 0, ""
+
+    public Object execute(HookContext ctx) {
+        return returnValue;
+    }
+}
+
+/** 呼叫原始方法但修改回傳值 */
+public class CallAndModifyAction implements RuleAction {
+    private final Object overrideValue;
+
+    public Object execute(HookContext ctx) throws Exception {
+        ctx.callOriginal();  // 讓副作用跑完
+        return overrideValue;  // 但回傳我們的值
+    }
+}
+
+/** 只記錄不攔截 */
+public class MonitorAction implements RuleAction {
+    private final DetectionLogger logger;
+
+    public Object execute(HookContext ctx) throws Exception {
+        logger.log(ctx);  // 記錄呼叫資訊
+        return ctx.callOriginal();  // 放行
+    }
+}
+
+/** 直接放行（條件不符合時用） */
+public class PassThroughAction implements RuleAction {
+    public Object execute(HookContext ctx) throws Exception {
+        return ctx.callOriginal();
+    }
+}
+```
+
+#### HookRule — 組合 Condition + Action
+
+```java
+/**
+ * 一條完整的 Hook 規則。
+ * 借鑑 Easy Rules 的 Rule 介面，但加入 Hook 特有的概念。
+ */
+public class HookRule implements Comparable<HookRule> {
+    private final String id;
+    private final RuleCondition condition;
+    private final RuleAction action;
+    private final RuleAction elseAction;  // 條件不符合時的動作（預設 PASS_THROUGH）
+    private final int priority;
+    private boolean enabled;
+
+    // 統計
+    private final AtomicInteger hitCount = new AtomicInteger(0);
+    private final AtomicInteger missCount = new AtomicInteger(0);
+    private volatile long lastHitTime = 0;
+
+    /**
+     * 評估並執行 — 這是 Hook callback 的入口。
+     */
+    public Object apply(HookContext ctx) {
+        if (!enabled) {
+            return elseAction.execute(ctx);
+        }
+
+        if (condition.evaluate(ctx)) {
+            hitCount.incrementAndGet();
+            lastHitTime = System.currentTimeMillis();
+            return action.execute(ctx);
+        } else {
+            missCount.incrementAndGet();
+            return elseAction.execute(ctx);
+        }
+    }
+
+    @Override
+    public int compareTo(HookRule other) {
+        return Integer.compare(this.priority, other.priority);
+    }
+}
+```
+
+#### 整合：從 JSON 到 HookRule
+
+```mermaid
+graph TD
+    A["rules.json"] --> B["RuleParser"]
+    B --> C{"condition 欄位存在?"}
+    C -->|否| D["AlwaysTrue + BlockAction<br>（向後相容）"]
+    C -->|是| E["解析 condition.type"]
+    E --> F["UrlMatchesCondition"]
+    E --> G["ArgContainsCondition"]
+    E --> H["ArgRegexCondition"]
+    E --> I["CompositeCondition"]
+
+    D --> J["建立 HookRule"]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
+
+    J --> K["HookManager 安裝 Hook"]
+    K --> L["方法被呼叫時"]
+    L --> M["HookRule.apply(ctx)"]
+```
+
+```java
+/**
+ * 從 JSON Rule 建立 HookRule。
+ */
+public class RuleParser {
+
+    public static HookRule fromJson(Rule jsonRule, Set<String> domainSet) {
+        // 解析條件
+        RuleCondition condition;
+        if (jsonRule.condition == null) {
+            condition = new AlwaysTrue();
+        } else {
+            condition = parseCondition(jsonRule.condition, domainSet);
+        }
+
+        // 解析動作
+        RuleAction action = parseAction(jsonRule.action);
+        RuleAction elseAction = jsonRule.elseAction != null
+            ? parseAction(jsonRule.elseAction)
+            : new PassThroughAction();
+
+        return new HookRule(jsonRule.id, condition, action, elseAction, jsonRule.priority);
+    }
+
+    private static RuleCondition parseCondition(JsonCondition cond, Set<String> domainSet) {
+        switch (cond.type) {
+            case "URL_MATCHES":
+                return new UrlMatchesCondition(domainSet, cond.argIndex);
+            case "ARG_CONTAINS":
+                return new ArgContainsCondition(cond.argIndex, cond.patterns);
+            case "ARG_REGEX":
+                return new ArgRegexCondition(cond.argIndex, cond.pattern);
+            case "AND":
+                return new CompositeCondition(
+                    cond.conditions.stream().map(c -> parseCondition(c, domainSet)).toList(),
+                    CompositeCondition.Operator.AND);
+            case "OR":
+                return new CompositeCondition(
+                    cond.conditions.stream().map(c -> parseCondition(c, domainSet)).toList(),
+                    CompositeCondition.Operator.OR);
+            case "NOT":
+                return new NotCondition(parseCondition(cond.inner, domainSet));
+            default:
+                return new AlwaysTrue();
+        }
+    }
+}
+```
+
+#### 新的 Callback：RuleBasedCallback
+
+取代現有的 `BlockCallback`：
+
+```java
+/**
+ * 基於 HookRule 的 callback。取代 BlockCallback。
+ */
+public class RuleBasedCallback extends HookCallback {
+    private final HookRule rule;
+    private final String packageName;
+
+    @Override
+    public Object handleHook(Object[] args) {
+        try {
+            HookContext ctx = new HookContext(
+                args, targetMethod, targetClass, backupMethod, packageName
+            );
+            return rule.apply(ctx);
+        } catch (Throwable t) {
+            // Graceful degradation: 規則出錯 → 呼叫原始方法
+            Log.e(TAG, "Rule error: " + rule.getId(), t);
+            try { return callOriginal(args); } catch (Exception e) { return null; }
+        }
+    }
+}
+```
+
+#### 完整流程圖
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant Hook as RuleBasedCallback
+    participant Rule as HookRule
+    participant Cond as RuleCondition
+    participant Act as RuleAction
+
+    App->>Hook: 呼叫 AdView.loadAd(request)
+    Hook->>Hook: 建立 HookContext(args, method, ...)
+    Hook->>Rule: apply(ctx)
+    Rule->>Rule: check enabled
+    Rule->>Cond: evaluate(ctx)
+
+    alt 條件是 ALWAYS
+        Cond-->>Rule: true
+    else 條件是 URL_MATCHES
+        Cond->>Cond: extractUrl(args) → checkDomain
+        Cond-->>Rule: true/false
+    end
+
+    alt 條件符合
+        Rule->>Act: action.execute(ctx)
+        Act-->>Rule: return null (blocked)
+        Rule->>Rule: hitCount++
+    else 條件不符合
+        Rule->>Act: elseAction.execute(ctx)
+        Act->>App: callOriginal(args)
+        Rule->>Rule: missCount++
+    end
+
+    Rule-->>Hook: result
+    Hook-->>App: result
+```
+
+#### 組合條件範例
+
+域名匹配 + 排除白名單：
+
+```json
+{
+  "condition": {
+    "type": "AND",
+    "conditions": [
+      {
+        "type": "URL_MATCHES",
+        "argIndex": 1,
+        "source": "adguard_domains.txt"
+      },
+      {
+        "type": "NOT",
+        "inner": {
+          "type": "URL_MATCHES",
+          "argIndex": 1,
+          "source": "whitelist_domains.txt"
+        }
+      }
+    ]
+  }
+}
+```
+
+意思是：URL 在廣告域名清單中 **且** 不在白名單中 → 攔截。
+
 ## 已知問題與待改進
 
 ### 1. 缺少 MONITOR_ONLY action
