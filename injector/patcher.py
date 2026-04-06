@@ -164,7 +164,7 @@ def copy_payload(decompiled_dir: str) -> bool:
     """Copy AdSweep DEX, native libraries, and assets into the decompiled directory."""
     if not os.path.exists(PREBUILT_DIR):
         print(f"[!] Prebuilt directory not found: {PREBUILT_DIR}")
-        print("[!] Build the core module first: ./gradlew :core:assemblePayload")
+        print("[!] Build the core module first: ./gradlew :core:assembleDebug")
         return False
 
     # Copy native libraries
@@ -188,20 +188,54 @@ def copy_payload(decompiled_dir: str) -> bool:
             shutil.copy2(os.path.join(assets_src, asset_file), assets_dst)
             print(f"[+] Copied asset: {asset_file}")
 
-    # Copy DEX — add as next numbered classesN.dex
+    # Convert DEX to smali and add as next smali_classesN directory
     dex_src = os.path.join(PREBUILT_DIR, "classes.dex")
     if os.path.exists(dex_src):
-        # Find existing DEX files to determine next number
-        existing_dex = glob.glob(os.path.join(decompiled_dir, "classes*.dex"))
-        if existing_dex:
-            # apktool uses smali directories, not DEX files
-            # We need to add our DEX differently
-            pass
+        if not inject_dex_as_smali(decompiled_dir, dex_src):
+            return False
 
-        # For apktool: copy smali files if available, otherwise handle at repack time
-        # For now, we'll need to add the DEX after recompilation
-        print("[*] DEX injection will be handled during packaging")
+    return True
 
+
+def inject_dex_as_smali(decompiled_dir: str, dex_path: str) -> bool:
+    """Convert a DEX file to smali and add it to the decompiled directory."""
+    import subprocess
+
+    # Find the next smali_classesN directory number
+    existing = sorted(glob.glob(os.path.join(decompiled_dir, "smali_classes*")))
+    if existing:
+        # Extract the highest number from smali_classes2, smali_classes3, etc.
+        last = os.path.basename(existing[-1])
+        num = int(last.replace("smali_classes", "")) if last != "smali" else 1
+        next_num = num + 1
+    else:
+        next_num = 2  # smali is classes.dex, smali_classes2 is classes2.dex
+
+    target_smali_dir = os.path.join(decompiled_dir, f"smali_classes{next_num}")
+    print(f"[*] Converting DEX to smali -> {os.path.basename(target_smali_dir)}")
+
+    # Use baksmali (bundled with apktool or standalone)
+    # Try java -jar baksmali first, then fallback to apktool's internal baksmali
+    # Find baksmali: check PATH, then bundled jar in injector directory
+    baksmali = shutil.which("baksmali")
+    injector_dir = os.path.dirname(os.path.abspath(__file__))
+    baksmali_jar = os.path.join(injector_dir, "baksmali.jar")
+
+    if baksmali:
+        cmd = [baksmali, "d", dex_path, "-o", target_smali_dir]
+    elif os.path.exists(baksmali_jar):
+        cmd = ["java", "-jar", baksmali_jar, "d", dex_path, "-o", target_smali_dir]
+    else:
+        print("[!] baksmali not found. Place baksmali.jar in the injector/ directory.")
+        return False
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[!] baksmali failed:\n{result.stderr}")
+        return False
+
+    smali_count = len(glob.glob(os.path.join(target_smali_dir, "**/*.smali"), recursive=True))
+    print(f"[+] Converted DEX to {smali_count} smali files in {os.path.basename(target_smali_dir)}")
     return True
 
 

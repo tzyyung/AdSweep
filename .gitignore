@@ -23,3 +23,5 @@ __pycache__/
 # Injector work directories
 /injector/work/
 /injector/*.apk
+output/
+injector/baksmali.jar
