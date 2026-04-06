@@ -88,13 +88,16 @@ public class HookManager {
         String key = rule.className + "." + rule.methodName;
 
         HookCallback callback;
-        if (rule.condition != null && ruleParser != null) {
-            // Conditional rule → use rule engine
+        boolean useRuleEngine = rule.condition != null
+                || "MONITOR_ONLY".equals(rule.action)
+                || (rule.action != null && rule.action.startsWith("CALL_AND_"));
+        if (useRuleEngine && ruleParser != null) {
+            // Conditional, monitor, or call-and-modify → use rule engine
             HookRule hookRule = ruleParser.parse(rule);
             callback = new RuleBasedCallback(hookRule, targetMethod, targetClass,
                     appContext.getPackageName());
         } else {
-            // Simple rule → use existing BlockCallback
+            // Simple block rule → use existing BlockCallback
             callback = new BlockCallback(key, rule.action);
         }
 
