@@ -188,8 +188,8 @@ public class PatchEngine {
                 if (entry.getName().startsWith("META-INF/")) continue; // Will be re-signed
 
                 ZipEntry newEntry = new ZipEntry(entry.getName());
-                // Keep .so files uncompressed (required for extractNativeLibs=false)
-                if (entry.getName().endsWith(".so") && entry.getMethod() == ZipEntry.STORED) {
+                // Preserve original compression method (critical for .so and .dex)
+                if (entry.getMethod() == ZipEntry.STORED) {
                     newEntry.setMethod(ZipEntry.STORED);
                     newEntry.setSize(entry.getSize());
                     newEntry.setCompressedSize(entry.getSize());
@@ -203,10 +203,18 @@ public class PatchEngine {
                 written.add(entry.getName());
             }
 
-            // Write patched DEX files
+            // Write patched DEX files (STORED, uncompressed)
             for (Map.Entry<String, byte[]> dex : dexes.entrySet()) {
-                zos.putNextEntry(new ZipEntry(dex.getKey()));
-                zos.write(dex.getValue());
+                byte[] dexBytes = dex.getValue();
+                ZipEntry dexEntry = new ZipEntry(dex.getKey());
+                dexEntry.setMethod(ZipEntry.STORED);
+                dexEntry.setSize(dexBytes.length);
+                dexEntry.setCompressedSize(dexBytes.length);
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(dexBytes);
+                dexEntry.setCrc(crc.getValue());
+                zos.putNextEntry(dexEntry);
+                zos.write(dexBytes);
                 zos.closeEntry();
             }
 
