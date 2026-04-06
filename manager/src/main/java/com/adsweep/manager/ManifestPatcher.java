@@ -27,6 +27,14 @@ public class ManifestPatcher {
 
             boolean modified = false;
 
+            // Set extractNativeLibs=true FIRST (before any string modifications)
+            if (setBooleanAttribute(manifestBytes, 0x010104ea, true)) {
+                modified = true;
+                Log.i(TAG, "Set extractNativeLibs=true");
+            } else {
+                Log.w(TAG, "extractNativeLibs not found in manifest");
+            }
+
             // Remove requiredSplitTypes string attribute
             byte[] patched = removeStringAttribute(manifestBytes, "requiredSplitTypes");
             if (patched != null) {
@@ -41,12 +49,6 @@ public class ManifestPatcher {
                 manifestBytes = patched;
                 modified = true;
                 Log.i(TAG, "Removed splitTypes");
-            }
-
-            // Set extractNativeLibs=true (boolean)
-            if (setBooleanAttribute(manifestBytes, 0x010104ea, true)) {
-                modified = true;
-                Log.i(TAG, "Set extractNativeLibs=true");
             }
 
             if (modified) {
@@ -181,18 +183,21 @@ public class ManifestPatcher {
     private static boolean setBooleanAttribute(byte[] data, int resId, boolean value) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
 
-        // Find resource map
-        int rmType = 0x0180;
+        // Find resource map by parsing chunk structure
+        // XML tree: header(8) → StringPool(var) → ResourceMap(var) → elements...
         int rmOffset = -1;
-        int offset = 0;
+        int offset = 8; // skip XML tree header
         while (offset < data.length - 8) {
             int t = buf.getShort(offset) & 0xFFFF;
-            if (t == rmType) { rmOffset = offset; break; }
             int size = buf.getInt(offset + 4);
-            if (size <= 0) break;
+            if (size <= 0 || size > data.length) break;
+            if (t == 0x0180) { rmOffset = offset; break; }
             offset += size;
         }
-        if (rmOffset < 0) return false;
+        if (rmOffset < 0) {
+            Log.w(TAG, "Resource map not found in manifest");
+            return false;
+        }
 
         int rmHeaderSize = buf.getShort(rmOffset + 2) & 0xFFFF;
         int rmSize = buf.getInt(rmOffset + 4);
