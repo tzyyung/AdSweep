@@ -44,9 +44,10 @@ public final class AdSweep {
         hookManager.initialize();
 
         // Initialize Layer 3: floating reporter + runtime monitors
+        // TODO: Layer 3 temporarily disabled for stability testing
         FloatingReporter.init(context, hookManager.getRuleStore());
-        LayerThreeMonitor l3 = new LayerThreeMonitor(context);
-        l3.installMonitors();
+        // LayerThreeMonitor l3 = new LayerThreeMonitor(context);
+        // l3.installMonitors();
 
         initialized = true;
         Log.i(TAG, "=== AdSweep Ready: " + hookManager.getActiveHookCount() + " hooks active ===");
