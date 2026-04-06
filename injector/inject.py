@@ -21,6 +21,7 @@ import tempfile
 from config import validate_tools
 from decompiler import decompile
 from scanner import scan, save_report, generate_suggested_rules, save_suggested_rules
+from rule_fetcher import fetch_rules_for_package, get_package_name_from_apk
 from patcher import patch
 from packager import package_apk
 
@@ -41,6 +42,8 @@ def main():
     parser.add_argument("--keep-work", action="store_true", help="Keep working directory after completion")
     parser.add_argument("--discover", action="store_true",
                         help="Discovery mode: inject with MONITOR_ONLY rules to observe ad behavior")
+    parser.add_argument("--rules-url", metavar="URL",
+                        help="Fetch rules from URL. Use 'auto' to auto-detect package and download from default repo")
 
     args = parser.parse_args()
 
@@ -89,7 +92,22 @@ def main():
                 print(f"[*] Use these as app rules: --rules {suggested_path}")
             print()
 
-        # Step 2b: Discovery mode or app-specific rules
+        # Step 2b: Auto-fetch rules from repository
+        if args.rules_url and not args.rules:
+            pkg = get_package_name_from_apk(decompiled_dir)
+            if pkg:
+                print(f"[*] Package: {pkg}")
+                repo_url = None if args.rules_url == "auto" else args.rules_url
+                fetched = fetch_rules_for_package(pkg, repo_url)
+                if fetched:
+                    args.rules = fetched
+                    print(f"[+] Downloaded rules to {fetched}")
+                else:
+                    print(f"[*] No rules found, using common rules only")
+            else:
+                print("[!] Could not detect package name")
+
+        # Step 2c: Discovery mode or app-specific rules
         if args.discover:
             import json as _json
             assets_dir = os.path.join(decompiled_dir, "assets")
