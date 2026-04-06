@@ -63,6 +63,18 @@ public class MainActivity extends Activity {
         btnPatch = findViewById(R.id.btnPatch);
         btnInstall = findViewById(R.id.btnInstall);
 
+        // Restore state
+        if (savedInstanceState != null) {
+            String path = savedInstanceState.getString("patchedApkPath");
+            if (path != null) {
+                patchedApk = new File(path);
+                if (patchedApk.exists()) btnInstall.setEnabled(true);
+            }
+            selectedPackageName = savedInstanceState.getString("selectedPackageName");
+            cachedSplitPaths = savedInstanceState.getStringArray("cachedSplitPaths");
+            pendingInstallSession = savedInstanceState.getBoolean("pendingInstall");
+        }
+
         // Select APK
         findViewById(R.id.cardSelectApk).setOnClickListener(v -> selectApk());
 
@@ -71,6 +83,15 @@ public class MainActivity extends Activity {
 
         // Install button
         btnInstall.setOnClickListener(v -> installPatched());
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (patchedApk != null) outState.putString("patchedApkPath", patchedApk.getAbsolutePath());
+        if (selectedPackageName != null) outState.putString("selectedPackageName", selectedPackageName);
+        if (cachedSplitPaths != null) outState.putStringArray("cachedSplitPaths", cachedSplitPaths);
+        outState.putBoolean("pendingInstall", pendingInstallSession);
     }
 
     private void selectApk() {
@@ -105,8 +126,14 @@ public class MainActivity extends Activity {
             }
         } else if (requestCode == REQUEST_UNINSTALL) {
             pendingInstallSession = false;
-            log("Uninstall done. Installing patched version...");
-            doInstall();
+            // Check if uninstall actually happened
+            try {
+                getPackageManager().getPackageInfo(selectedPackageName, 0);
+                log("Uninstall cancelled. Tap INSTALL to try again.");
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                log("Uninstall done. Installing patched version...");
+                doInstall();
+            }
             return;
         } else if (requestCode == REQUEST_INSTALLED_APP) {
             String apkPath = data.getStringExtra(AppListActivity.RESULT_APK_PATH);
@@ -324,15 +351,15 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // Cache split APK paths before anything changes
-        if (selectedPackageName != null) {
+        // Cache split APK paths before uninstall
+        if (selectedPackageName != null && cachedSplitPaths == null) {
             try {
                 android.content.pm.ApplicationInfo ai = getPackageManager()
                         .getApplicationInfo(selectedPackageName, 0);
-                cachedSplitPaths = ai.splitSourceDirs;
-                if (cachedSplitPaths != null) {
-                    for (int i = 0; i < cachedSplitPaths.length; i++) {
-                        File src = new File(cachedSplitPaths[i]);
+                if (ai.splitSourceDirs != null) {
+                    cachedSplitPaths = new String[ai.splitSourceDirs.length];
+                    for (int i = 0; i < ai.splitSourceDirs.length; i++) {
+                        File src = new File(ai.splitSourceDirs[i]);
                         File dst = new File(getCacheDir(), "split_" + src.getName());
                         FileInputStream fis = new FileInputStream(src);
                         FileOutputStream fos = new FileOutputStream(dst);
@@ -348,18 +375,21 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 cachedSplitPaths = null;
             }
+        }
 
-            // Uninstall original first (required: different signature)
+        // Check if original app is still installed
+        if (selectedPackageName != null) {
             try {
                 getPackageManager().getPackageInfo(selectedPackageName, 0);
-                log("Please uninstall the original app first.");
-                log("After uninstalling, tap INSTALL again.");
+                // Still installed — uninstall first, then auto-continue
+                log("Uninstalling original app...");
+                pendingInstallSession = true;
                 Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
                         Uri.parse("package:" + selectedPackageName));
-                startActivity(uninstallIntent);
+                startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
                 return;
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                // Already uninstalled, continue
+                // Already gone, proceed
             }
         }
 
