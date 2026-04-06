@@ -90,6 +90,10 @@ public class PatchEngine {
         File unsignedApk = new File(workDir, "unsigned.apk");
         buildPatchedApk(inputApk, patchedDexes, appRules, unsignedApk);
 
+        // Step 3b: Patch manifest (remove requiredSplitTypes, set extractNativeLibs)
+        progress("Patching manifest...");
+        ManifestPatcher.patch(unsignedApk);
+
         // Step 4: Sign
         progress("Signing APK...");
         signApk(unsignedApk, outputApk);
