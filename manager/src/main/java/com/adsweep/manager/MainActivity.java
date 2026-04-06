@@ -316,6 +316,16 @@ public class MainActivity extends Activity {
     // ===================== Step 4: Install =====================
 
     private void doInstall() {
+        // Check install permission first
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            log("Please allow installing unknown apps");
+            Intent intent = new Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return;
+        }
+
         btnInstall.setEnabled(false);
         setStepActive(step4Status);
         tvStep4Info.setText("Installing...");
