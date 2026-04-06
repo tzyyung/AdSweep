@@ -1,24 +1,32 @@
 # AdSweep 建置與開發指南
 
-## 前置需求
+## 開發環境
 
-### 系統工具
-- Java 11+
-- Python 3.8+
+```mermaid
+graph LR
+    subgraph Tools
+        A[Java 11+]
+        B[Python 3.8+]
+        C[Android SDK]
+        D[apktool 3.0.1+]
+        E[baksmali 2.5.2]
+    end
 
-### Android SDK
-- build-tools 36.1.0（zipalign, apksigner, d8）
-- NDK 27.0+
-- CMake 3.22.1
-- platform-tools（adb）
+    subgraph SDK["Android SDK Components"]
+        C --> C1[build-tools 36.1.0]
+        C --> C2[NDK 27.0+]
+        C --> C3[CMake 3.22.1]
+        C --> C4[platform-tools]
+    end
 
-### 其他工具
-- apktool 3.0.1+（`/opt/homebrew/bin/apktool`）
-- baksmali 2.5.2（`injector/baksmali.jar`，自動使用）
+    subgraph Python
+        B --> B1[androguard]
+    end
+```
 
 ## 工具路徑
 
-預設路徑在 `injector/config.py` 中設定，可根據環境調整：
+`injector/config.py`：
 
 ```python
 ANDROID_HOME = "~/Library/Android/sdk"
@@ -26,34 +34,40 @@ BUILD_TOOLS_VERSION = "36.1.0"
 APKTOOL = "/opt/homebrew/bin/apktool"
 ```
 
-## 建置 Core 模組
+## 建置流程
 
-```bash
-# 建立 local.properties（指定 SDK 路徑）
-echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
-
-# 編譯
-./gradlew :core:assembleDebug
-
-# 產出位置
-# core/build/outputs/aar/core-debug.aar
+```mermaid
+graph TD
+    A["./gradlew :core:assembleDebug"] --> B["core-debug.aar"]
+    B --> C["解壓 AAR"]
+    C --> D["d8 classes.jar → classes.dex"]
+    C --> E["複製 jni/**/*.so"]
+    C --> F["複製 assets/"]
+    D --> G["prebuilt/classes.dex"]
+    E --> H["prebuilt/lib/"]
+    F --> I["prebuilt/assets/"]
+    G --> J["inject.py 使用"]
+    H --> J
+    I --> J
 ```
 
-## 更新 Prebuilt Payload
-
-Core 模組編譯後，需要將產出更新到 `prebuilt/` 供 injector 使用：
+### 步驟
 
 ```bash
-# 1. 解壓 AAR
-cd /tmp && mkdir aar && cd aar
-unzip -q /path/to/AdSweep/core/build/outputs/aar/core-debug.aar
+# 1. 建立 local.properties
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
-# 2. 轉換 DEX
+# 2. 編譯
+./gradlew :core:assembleDebug
+
+# 3. 更新 prebuilt
+cd /tmp && mkdir aar && cd aar
+unzip -q path/to/core-debug.aar
+
 mkdir dex
 ~/Library/Android/sdk/build-tools/36.1.0/d8 --output dex classes.jar
 
-# 3. 複製到 prebuilt
-PREBUILT=/path/to/AdSweep/prebuilt
+PREBUILT=path/to/AdSweep/prebuilt
 cp dex/classes.dex $PREBUILT/
 for abi in arm64-v8a armeabi-v7a; do
   mkdir -p $PREBUILT/lib/$abi
@@ -62,34 +76,39 @@ done
 cp assets/* $PREBUILT/assets/
 ```
 
-## 注入
+## 注入流程
 
-### 基本注入
+```mermaid
+graph TD
+    A["python inject.py --apk target.apk"] --> B["apktool d -r"]
+    B --> C["Layer 2 掃描"]
+    C --> D["smali 注入"]
+    D --> E["複製 payload"]
+    E --> F["apktool b"]
+    F --> G["Binary manifest patch"]
+    G --> H["zipalign -p"]
+    H --> I["apksigner sign"]
+    I --> J["patched.apk"]
+```
+
+### 指令
 
 ```bash
 cd injector
-python inject.py --apk /path/to/target.apk --output patched.apk
-```
 
-### 帶 App 規則
+# 基本
+python inject.py --apk target.apk
 
-```bash
-python inject.py \
-  --apk /path/to/target.apk \
+# 帶 App 規則
+python inject.py --apk target.apk \
   --rules rules/money_manager.json \
-  --keystore /path/to/debug.keystore
+  --keystore path/to/debug.keystore
+
+# 保留工作目錄（除錯用）
+python inject.py --apk target.apk --keep-work --work-dir ./work
 ```
 
-### 注入流程說明
-
-1. `apktool d -r` — 反編譯 smali，資源不動
-2. Layer 2 掃描 — 自動偵測廣告 SDK，產生 `suggested_rules.json`
-3. 注入 — smali 入口 + .so + assets + App 規則
-4. `apktool b` — 重建 APK
-5. `zipalign -p` — 頁對齊（.so 不壓縮，配合 extractNativeLibs=false）
-6. `apksigner sign` — 簽名
-
-### 安裝到模擬器/設備
+### 安裝
 
 ```bash
 ADB=~/Library/Android/sdk/platform-tools/adb
@@ -97,22 +116,22 @@ ADB=~/Library/Android/sdk/platform-tools/adb
 # 單一 APK
 $ADB install patched.apk
 
-# 有 Split APK 時
-$ADB uninstall com.example.app  # 必須先卸載（簽名不同）
+# Split APK（需同一把 keystore 簽名）
+$ADB uninstall com.example.app
 $ADB install-multiple \
   patched.apk \
   split_config.arm64_v8a.apk \
   split_config.xxhdpi.apk
 ```
 
-### 驗證 Hook
+### 驗證
 
 ```bash
-# 查看 AdSweep 日誌
-$ADB logcat -s "AdSweep" "AdSweep.HookManager" "AdSweep.Block"
+$ADB logcat -s "AdSweep" "AdSweep.HookManager" "AdSweep.Block" "AdSweep.L3"
 ```
 
-正常輸出：
+預期輸出：
+
 ```
 I AdSweep : === AdSweep Initializing ===
 I AdSweep : LSPlant initialized successfully
@@ -121,16 +140,17 @@ I AdSweep.HookManager: Loading 32 rules
 I AdSweep.HookManager: Hooked: com.google.android.gms.ads.BaseAdView.loadAd [BLOCK_RETURN_VOID]
 ...
 I AdSweep.HookManager: Initialization complete: 22/32 hooks installed
+I AdSweep.L3: Installing Layer 3 monitors...
+I AdSweep.L3: Hooked: WebView.loadUrl
+I AdSweep.L3: Monitoring: com.google.android.gms.ads.AdListener.onAdLoaded
+I AdSweep.L3: Layer 3: 6 monitors installed
 I AdSweep : === AdSweep Ready: 22 hooks active ===
 I AdSweep.Block: Blocked: com.applovin.sdk.AppLovinSdk.initialize
 ```
 
 ## 簽名金鑰
 
-測試用的 debug keystore：
-
 ```bash
-# 如果沒有，建立一個
 keytool -genkeypair -v \
   -keystore debug.keystore \
   -alias debugkey \
@@ -143,18 +163,45 @@ keytool -genkeypair -v \
 
 ## 模擬器測試
 
-需要使用 ARM64 架構的模擬器映像（ShadowHook 不支援 x86）：
+ShadowHook 不支援 x86，需使用 ARM64 映像：
 
 ```bash
-# 安裝 API 34 ARM64 映像
 sdkmanager "system-images;android-34;google_apis;arm64-v8a"
 
-# 建立 AVD
 avdmanager create avd -n AdSweep_Test \
   -k "system-images;android-34;google_apis;arm64-v8a" -d "pixel_6"
 
-# 啟動
 emulator -avd AdSweep_Test
 ```
 
-> 注意：API 36 的 ShadowHook linker 有相容性問題（error 12），但 LSPlant 仍可正常運作。建議使用 API 34 測試。
+> API 36 的 ShadowHook 有 linker error 12，但 LSPlant 仍可運作。建議用 API 34。
+
+## 目錄結構
+
+```
+AdSweep/
+├── build.gradle.kts            # Root Gradle
+├── settings.gradle.kts
+├── local.properties            # SDK path
+├── core/                       # Android Library
+│   ├── build.gradle.kts        # NDK/CMake/LSPlant config
+│   └── src/main/
+│       ├── java/com/adsweep/   # Java sources
+│       ├── jni/                # C++ (LSPlant JNI)
+│       └── assets/             # Built-in rules JSON
+├── injector/                   # Python toolchain
+│   ├── inject.py               # Main CLI
+│   ├── decompiler.py           # apktool -r wrapper
+│   ├── scanner.py              # Layer 2 + auto rules
+│   ├── patcher.py              # smali injection
+│   ├── manifest_patcher.py     # Binary AXML patching
+│   ├── packager.py             # zipalign + sign
+│   ├── config.py               # Tool paths
+│   ├── baksmali.jar            # DEX → smali
+│   └── rules/                  # App rule examples
+├── prebuilt/                   # Build output for injector
+│   ├── classes.dex
+│   ├── lib/{arm64-v8a,armeabi-v7a}/*.so
+│   └── assets/
+└── doc/                        # Documentation
+```
