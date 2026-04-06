@@ -18,22 +18,32 @@ public class BlockCallback extends HookCallback {
 
     @Override
     public Object handleHook(Object[] args) {
-        Log.i(TAG, "Blocked: " + description);
+        try {
+            Log.i(TAG, "Blocked: " + description);
 
-        switch (action) {
-            case "BLOCK_RETURN_TRUE":
-                return Boolean.TRUE;
-            case "BLOCK_RETURN_FALSE":
-                return Boolean.FALSE;
-            case "BLOCK_RETURN_ZERO":
-                return 0;
-            case "BLOCK_RETURN_EMPTY_STRING":
-                return "";
-            case "BLOCK_RETURN_NULL":
+            switch (action) {
+                case "BLOCK_RETURN_TRUE":
+                    return Boolean.TRUE;
+                case "BLOCK_RETURN_FALSE":
+                    return Boolean.FALSE;
+                case "BLOCK_RETURN_ZERO":
+                    return 0;
+                case "BLOCK_RETURN_EMPTY_STRING":
+                    return "";
+                case "BLOCK_RETURN_NULL":
+                    return null;
+                case "BLOCK_RETURN_VOID":
+                default:
+                    return null;
+            }
+        } catch (Throwable t) {
+            // Never let a callback crash the app — fallback to calling original
+            Log.e(TAG, "Callback error for " + description + ", calling original", t);
+            try {
+                return callOriginal(args);
+            } catch (Exception e) {
                 return null;
-            case "BLOCK_RETURN_VOID":
-            default:
-                return null;
+            }
         }
     }
 }

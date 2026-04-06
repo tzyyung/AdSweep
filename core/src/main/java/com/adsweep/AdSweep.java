@@ -5,14 +5,13 @@ import android.util.Log;
 
 import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
-import com.adsweep.hook.LayerThreeMonitor;
 import com.adsweep.reporter.FloatingReporter;
 
 /**
  * AdSweep entry point. Called from the target app's Application.onCreate().
  *
- * The injector script inserts this call:
- *   invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V
+ * Designed for graceful degradation: any failure in AdSweep initialization
+ * will NOT crash the host app. All exceptions are caught and logged.
  */
 public final class AdSweep {
 
@@ -24,8 +23,18 @@ public final class AdSweep {
 
     /**
      * Initialize AdSweep. Must be called once from Application.onCreate().
+     * Never throws — all errors are caught and logged.
      */
     public static void init(Context context) {
+        try {
+            initInternal(context);
+        } catch (Throwable t) {
+            // Catch absolutely everything — AdSweep must never crash the host app
+            Log.e(TAG, "Initialization failed (app will continue without ad blocking)", t);
+        }
+    }
+
+    private static void initInternal(Context context) {
         if (initialized) {
             Log.w(TAG, "Already initialized, skipping");
             return;
@@ -35,6 +44,7 @@ public final class AdSweep {
 
         if (!HookEngine.isAvailable()) {
             Log.e(TAG, "Hook engine not available. Native library may have failed to load.");
+            Log.e(TAG, "App will continue without ad blocking.");
             return;
         }
 
@@ -43,11 +53,12 @@ public final class AdSweep {
         hookManager = new HookManager(context);
         hookManager.initialize();
 
-        // Initialize Layer 3: floating reporter + runtime monitors
-        // TODO: Layer 3 temporarily disabled for stability testing
-        FloatingReporter.init(context, hookManager.getRuleStore());
-        // LayerThreeMonitor l3 = new LayerThreeMonitor(context);
-        // l3.installMonitors();
+        // Initialize floating reporter (for future Layer 3 use and Settings)
+        try {
+            FloatingReporter.init(context, hookManager.getRuleStore());
+        } catch (Throwable t) {
+            Log.w(TAG, "FloatingReporter init failed (non-critical)", t);
+        }
 
         initialized = true;
         Log.i(TAG, "=== AdSweep Ready: " + hookManager.getActiveHookCount() + " hooks active ===");

@@ -25,7 +25,12 @@ public final class HookEngine {
     private HookEngine() {}
 
     public static boolean isAvailable() {
-        return loaded && nativeIsInitialized();
+        try {
+            return loaded && nativeIsInitialized();
+        } catch (Throwable t) {
+            Log.e(TAG, "isAvailable check failed", t);
+            return false;
+        }
     }
 
     /**

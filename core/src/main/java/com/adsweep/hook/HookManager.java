@@ -88,8 +88,8 @@ public class HookManager {
                 Log.w(TAG, "Failed to hook: " + key);
                 return false;
             }
-        } catch (NoSuchMethodException e) {
-            Log.e(TAG, "Callback method not found", e);
+        } catch (Throwable t) {
+            Log.e(TAG, "Hook install error for " + key, t);
             return false;
         }
     }
