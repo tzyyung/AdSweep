@@ -346,6 +346,35 @@ public class MainActivity extends Activity {
                     mainHandler.post(() -> log("Added " + splits.length + " split APKs"));
                 }
 
+                // Register callback to detect result
+                installer.registerSessionCallback(new PackageInstaller.SessionCallback() {
+                    @Override public void onCreated(int id) {}
+                    @Override public void onBadgingChanged(int id) {}
+                    @Override public void onActiveChanged(int id, boolean active) {}
+                    @Override public void onProgressChanged(int id, float progress) {}
+                    @Override
+                    public void onFinished(int id, boolean success) {
+                        if (id == sessionId) {
+                            mainHandler.post(() -> {
+                                if (success) {
+                                    setStepDone(step4Status);
+                                    tvStep4Info.setText("Installed successfully!");
+                                    log("Install SUCCESS!");
+                                    Toast.makeText(MainActivity.this, "Install complete!", Toast.LENGTH_LONG).show();
+                                } else {
+                                    setStepError(step4Status);
+                                    tvStep4Info.setText("Install failed");
+                                    log("Install FAILED (session rejected)");
+                                    log("This may be due to split APK mismatch.");
+                                    log("Try: adb install patched.apk");
+                                    btnInstall.setEnabled(true);
+                                }
+                            });
+                            installer.unregisterSessionCallback(this);
+                        }
+                    }
+                });
+
                 // Commit
                 Intent cb = new Intent(this, MainActivity.class);
                 PendingIntent pi = PendingIntent.getActivity(this, 0, cb,
@@ -353,8 +382,8 @@ public class MainActivity extends Activity {
                 session.commit(pi.getIntentSender());
 
                 mainHandler.post(() -> {
-                    tvStep4Info.setText("Confirm installation...");
-                    log("Install session committed");
+                    tvStep4Info.setText("Waiting for confirmation...");
+                    log("Install session committed, waiting for result...");
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
