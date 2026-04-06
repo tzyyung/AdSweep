@@ -313,11 +313,29 @@ public class MainActivity extends Activity {
             return;
         }
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        Uri apkUri = Uri.fromFile(patchedApk);
-        intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
+        try {
+            // Copy to external cache so package installer can access it
+            File externalApk = new File(getExternalCacheDir(), "patched.apk");
+            FileInputStream fis = new FileInputStream(patchedApk);
+            FileOutputStream fos = new FileOutputStream(externalApk);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
+            fos.close();
+            fis.close();
+
+            // Bypass StrictMode file URI check
+            android.os.StrictMode.VmPolicy.Builder builder = new android.os.StrictMode.VmPolicy.Builder();
+            android.os.StrictMode.setVmPolicy(builder.build());
+
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.fromFile(externalApk), "application/vnd.android.package-archive");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Install error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            log("Install error: " + e.getMessage());
+        }
     }
 
     private void log(String message) {
