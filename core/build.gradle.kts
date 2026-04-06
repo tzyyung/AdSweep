@@ -17,7 +17,7 @@ android {
         }
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -46,4 +46,5 @@ android {
 
 dependencies {
     implementation("org.lsposed.lsplant:lsplant-standalone:6.4")
+    implementation("com.bytedance.android:shadowhook:1.1.1")
 }

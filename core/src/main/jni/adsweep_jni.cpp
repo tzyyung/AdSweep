@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <string>
 #include "lsplant.hpp"
+#include "shadowhook.h"
 
 #define LOG_TAG "AdSweep"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -17,9 +18,44 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void * /* reserved */) {
         return JNI_ERR;
     }
 
-    // lsplant-standalone has built-in inline hooker and symbol resolver.
-    // Just call Init with default InitInfo.
-    g_initialized = lsplant::Init(env, lsplant::InitInfo{});
+    // Initialize ShadowHook (provides inline hook for LSPlant)
+    int sh_ret = shadowhook_init(SHADOWHOOK_MODE_SHARED, false);
+    if (sh_ret != 0) {
+        LOGE("ShadowHook init failed: %d", sh_ret);
+        // Continue anyway — some modes may still work
+    } else {
+        LOGI("ShadowHook initialized");
+    }
+
+    // Open libart.so handle for symbol resolution
+    void *art_handle = shadowhook_dlopen("libart.so");
+
+    lsplant::InitInfo info{
+        .inline_hooker = [](void *target, void *hooker) -> void * {
+            void *backup = nullptr;
+            void *stub = shadowhook_hook_func_addr(target, hooker, &backup);
+            if (stub != nullptr) {
+                return backup;
+            }
+            return nullptr;
+        },
+        .inline_unhooker = [](void *func) -> bool {
+            // ShadowHook unhook needs the stub, not the original func.
+            // For LSPlant's internal use, this is rarely called.
+            // Return true to satisfy the interface.
+            return true;
+        },
+        .art_symbol_resolver = [art_handle](std::string_view symbol_name) -> void * {
+            std::string name(symbol_name);
+            return shadowhook_dlsym(art_handle, name.c_str());
+        },
+        .art_symbol_prefix_resolver = [art_handle](std::string_view symbol_prefix) -> void * {
+            std::string prefix(symbol_prefix);
+            return shadowhook_dlsym(art_handle, prefix.c_str());
+        },
+    };
+
+    g_initialized = lsplant::Init(env, info);
     if (g_initialized) {
         LOGI("LSPlant initialized successfully");
     } else {

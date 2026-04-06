@@ -244,6 +244,14 @@ def patch_manifest(manifest_path: str) -> bool:
     with open(manifest_path, "r") as f:
         content = f.read()
 
+    # Set extractNativeLibs to true (required for injected .so files)
+    if 'android:extractNativeLibs="false"' in content:
+        content = content.replace(
+            'android:extractNativeLibs="false"',
+            'android:extractNativeLibs="true"'
+        )
+        print("[+] Set extractNativeLibs=true")
+
     # Add SYSTEM_ALERT_WINDOW permission if not present
     if "SYSTEM_ALERT_WINDOW" not in content:
         content = content.replace(
