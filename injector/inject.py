@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--key-pass", help="Key password")
     parser.add_argument("--work-dir", help="Working directory (default: temp dir)")
     parser.add_argument("--keep-work", action="store_true", help="Keep working directory after completion")
+    parser.add_argument("--discover", action="store_true",
+                        help="Discovery mode: inject with MONITOR_ONLY rules to observe ad behavior")
 
     args = parser.parse_args()
 
@@ -87,8 +89,32 @@ def main():
                 print(f"[*] Use these as app rules: --rules {suggested_path}")
             print()
 
-        # Step 2b: Copy app-specific rules if provided
-        if args.rules:
+        # Step 2b: Discovery mode or app-specific rules
+        if args.discover:
+            import json as _json
+            assets_dir = os.path.join(decompiled_dir, "assets")
+            os.makedirs(assets_dir, exist_ok=True)
+
+            # Convert all suggested rules to MONITOR_ONLY
+            if suggested:
+                for rule in suggested:
+                    rule["action"] = "MONITOR_ONLY"
+                discover_rules = {"version": 1, "rules": suggested}
+                rules_path = os.path.join(assets_dir, "adsweep_rules_app.json")
+                with open(rules_path, "w") as f:
+                    _json.dump(discover_rules, f, indent=2)
+                print(f"[+] Discovery mode: {len(suggested)} rules set to MONITOR_ONLY")
+
+            # Create flag file to enable discovery mode in AdSweep.init()
+            flag_path = os.path.join(assets_dir, "adsweep_discover_mode")
+            with open(flag_path, "w") as f:
+                f.write("1")
+            print("[+] Discovery flag created")
+            print("[*] After using the app, pull the log:")
+            print(f"    adb shell run-as <package> cat files/adsweep/discovery_log.txt")
+            print(f"    python3 discover_analyzer.py discovery_log.txt")
+
+        elif args.rules:
             import shutil as _shutil
             assets_dir = os.path.join(decompiled_dir, "assets")
             os.makedirs(assets_dir, exist_ok=True)

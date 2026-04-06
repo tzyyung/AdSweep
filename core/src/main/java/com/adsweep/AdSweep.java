@@ -3,10 +3,13 @@ package com.adsweep;
 import android.content.Context;
 import android.util.Log;
 
+import com.adsweep.engine.actions.MonitorAction;
 import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
 import com.adsweep.hook.LayerThreeMonitor;
 import com.adsweep.reporter.FloatingReporter;
+
+import java.io.File;
 
 /**
  * AdSweep entry point. Called from the target app's Application.onCreate().
@@ -50,6 +53,19 @@ public final class AdSweep {
         }
 
         Log.i(TAG, "Hook engine ready");
+
+        // Check for discovery mode (flag file in assets)
+        boolean discoverMode = false;
+        try {
+            context.getAssets().open("adsweep_discover_mode");
+            discoverMode = true;
+            File logFile = new File(context.getFilesDir(), "adsweep/discovery_log.txt");
+            logFile.getParentFile().mkdirs();
+            MonitorAction.initFileLog(logFile);
+            Log.i(TAG, "=== DISCOVERY MODE — monitoring only, not blocking ===");
+        } catch (Exception e) {
+            // No flag file = normal mode
+        }
 
         hookManager = new HookManager(context);
         hookManager.initialize();
