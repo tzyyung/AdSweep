@@ -199,12 +199,47 @@ public class MainActivity extends Activity {
     }
 
     private void startPatching() {
-        // TODO: implement on-device patching with apktool Java API
-        Toast.makeText(this,
-                "On-device patching not yet implemented.\n"
-                        + "Use CLI: python inject.py --apk target.apk --rules-url auto",
-                Toast.LENGTH_LONG).show();
-        log("On-device patching: coming in next version");
+        if (selectedApk == null) {
+            Toast.makeText(this, "No APK selected", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        btnPatch.setEnabled(false);
+        btnPatch.setText("Patching...");
+        log("Starting patch...");
+
+        PatchEngine engine = new PatchEngine(this, new PatchEngine.ProgressCallback() {
+            @Override
+            public void onProgress(String message) {
+                mainHandler.post(() -> log(message));
+            }
+
+            @Override
+            public void onError(String error) {
+                mainHandler.post(() -> {
+                    log("ERROR: " + error);
+                    btnPatch.setEnabled(true);
+                    btnPatch.setText("Patch");
+                    Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
+                });
+            }
+
+            @Override
+            public void onComplete(File patched) {
+                mainHandler.post(() -> {
+                    patchedApk = patched;
+                    log("Patched APK: " + patched.getAbsolutePath());
+                    log("Size: " + (patched.length() / 1024 / 1024) + " MB");
+                    btnPatch.setText("Patch");
+                    btnPatch.setEnabled(true);
+                    btnInstall.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Patch complete!", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+
+        // TODO: pass downloaded app rules if available
+        engine.patch(selectedApk, null);
     }
 
     private void installPatched() {

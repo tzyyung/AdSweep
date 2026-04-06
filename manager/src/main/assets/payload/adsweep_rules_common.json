@@ -1,0 +1,261 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "admob-baseadview-load",
+      "className": "com.google.android.gms.ads.BaseAdView",
+      "methodName": "loadAd",
+      "paramTypes": ["com.google.android.gms.ads.AdRequest"],
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdMob"
+    },
+    {
+      "id": "admob-interstitial-load",
+      "className": "com.google.android.gms.ads.interstitial.InterstitialAd",
+      "methodName": "load",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdMob"
+    },
+    {
+      "id": "admob-rewarded-load",
+      "className": "com.google.android.gms.ads.rewarded.RewardedAd",
+      "methodName": "load",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdMob"
+    },
+    {
+      "id": "admob-adloader-load",
+      "className": "com.google.android.gms.ads.AdLoader",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdMob"
+    },
+    {
+      "id": "admob-mobileads-init",
+      "className": "com.google.android.gms.ads.MobileAds",
+      "methodName": "initialize",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdMob"
+    },
+    {
+      "id": "applovin-sdk-init",
+      "className": "com.applovin.sdk.AppLovinSdk",
+      "methodName": "initialize",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AppLovin"
+    },
+    {
+      "id": "applovin-maxad-load",
+      "className": "com.applovin.mediation.ads.MaxAdView",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AppLovin MAX"
+    },
+    {
+      "id": "applovin-interstitial-load",
+      "className": "com.applovin.mediation.ads.MaxInterstitialAd",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AppLovin MAX"
+    },
+    {
+      "id": "facebook-adview-load",
+      "className": "com.facebook.ads.AdView",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Facebook Audience Network"
+    },
+    {
+      "id": "facebook-interstitial-load",
+      "className": "com.facebook.ads.InterstitialAd",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Facebook Audience Network"
+    },
+    {
+      "id": "ironsource-demandonly-interstitial",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "loadISDemandOnlyInterstitial",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource"
+    },
+    {
+      "id": "ironsource-demandonly-rewarded",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "loadISDemandOnlyRewardedVideo",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource"
+    },
+    {
+      "id": "unity-ads-init",
+      "className": "com.unity3d.ads.UnityAds",
+      "methodName": "initialize",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Unity Ads"
+    },
+    {
+      "id": "unity-ads-load",
+      "className": "com.unity3d.ads.UnityAds",
+      "methodName": "load",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Unity Ads"
+    },
+    {
+      "id": "vungle-init",
+      "className": "com.vungle.ads.VungleAds",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Vungle"
+    },
+    {
+      "id": "adcolony-configure",
+      "className": "com.adcolony.sdk.AdColony",
+      "methodName": "configure",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AdColony"
+    },
+    {
+      "id": "inmobi-sdk-init",
+      "className": "com.inmobi.sdk.InMobiSdk",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "InMobi"
+    },
+    {
+      "id": "chartboost-sdk-init",
+      "className": "com.chartboost.sdk.Chartboost",
+      "methodName": "startWithAppId",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Chartboost"
+    },
+    {
+      "id": "mopub-init",
+      "className": "com.mopub.common.MoPub",
+      "methodName": "initializeSdk",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "MoPub"
+    },
+    {
+      "id": "kakao-adfit-load",
+      "className": "com.kakao.adfit.ads.ba.BannerAdView",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Kakao AdFit"
+    },
+    {
+      "id": "coupang-ads-init",
+      "className": "com.coupang.ads.CoupangAds",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Coupang Ads"
+    },
+    {
+      "id": "startapp-sdk-init",
+      "className": "com.startapp.sdk.adsbase.StartAppSDK",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "StartApp"
+    },
+    {
+      "id": "pangle-sdk-init",
+      "className": "com.bytedance.sdk.openadsdk.TTAdSdk",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Pangle (ByteDance)"
+    },
+    {
+      "id": "ump-load-show-consent",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadAndShowConsentFormIfRequired",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Google UMP"
+    },
+    {
+      "id": "ump-load-consent-form",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadConsentForm",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Google UMP"
+    },
+    {
+      "id": "network-okhttp-block",
+      "className": "okhttp3.OkHttpClient",
+      "methodName": "newCall",
+      "condition": {
+        "type": "URL_MATCHES",
+        "argIndex": 1,
+        "extract": "url"
+      },
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Network (OkHttp)",
+      "notes": "Block ad domain requests via OkHttp"
+    },
+    {
+      "id": "network-url-block",
+      "className": "java.net.URL",
+      "methodName": "openConnection",
+      "condition": {
+        "type": "URL_MATCHES",
+        "argIndex": 0,
+        "extract": "toString"
+      },
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Network (HttpURLConnection)",
+      "notes": "Block ad domain requests via HttpURLConnection"
+    }
+  ]
+}
