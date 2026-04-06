@@ -42,6 +42,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Must be called before any apktool usage
+        PatchEngine.initForAndroid(this);
+
         setContentView(R.layout.activity_main);
 
         tvApkInfo = findViewById(R.id.tvApkInfo);

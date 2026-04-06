@@ -32,6 +32,22 @@ public class PatchEngine {
     private final Context context;
     private final ProgressCallback callback;
 
+    /**
+     * Must be called once at app startup (before any apktool API usage).
+     * Fixes system properties that apktool expects on desktop JVM.
+     */
+    public static void initForAndroid(Context ctx) {
+        if (System.getProperty("os.name") == null) {
+            System.setProperty("os.name", "Linux");
+        }
+        if (System.getProperty("user.home") == null) {
+            System.setProperty("user.home", ctx.getFilesDir().getAbsolutePath());
+        }
+        if (System.getProperty("java.io.tmpdir") == null) {
+            System.setProperty("java.io.tmpdir", ctx.getCacheDir().getAbsolutePath());
+        }
+    }
+
     public PatchEngine(Context context, ProgressCallback callback) {
         this.context = context;
         this.callback = callback;
@@ -55,13 +71,6 @@ public class PatchEngine {
     }
 
     private void doPatch(File inputApk, File appRules) throws Exception {
-        // Fix: apktool's OSDetection needs os.name to be set (null on Android)
-        if (System.getProperty("os.name") == null) {
-            System.setProperty("os.name", "Linux");
-        }
-        if (System.getProperty("user.home") == null) {
-            System.setProperty("user.home", context.getFilesDir().getAbsolutePath());
-        }
         File workDir = new File(context.getCacheDir(), "adsweep_work");
         File decompDir = new File(workDir, "decompiled");
         File outputApk = new File(context.getFilesDir(), "patched/patched.apk");
