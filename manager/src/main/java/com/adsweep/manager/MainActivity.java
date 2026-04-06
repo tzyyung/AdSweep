@@ -351,49 +351,108 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // Cache split APK paths before uninstall
-        if (selectedPackageName != null && cachedSplitPaths == null) {
+        // Cache split APKs before anything
+        cacheSplitApks();
+
+        // Try shell-based install (works on rooted/emulator)
+        log("Installing via shell...");
+        new Thread(() -> {
             try {
-                android.content.pm.ApplicationInfo ai = getPackageManager()
-                        .getApplicationInfo(selectedPackageName, 0);
-                if (ai.splitSourceDirs != null) {
-                    cachedSplitPaths = new String[ai.splitSourceDirs.length];
-                    for (int i = 0; i < ai.splitSourceDirs.length; i++) {
-                        File src = new File(ai.splitSourceDirs[i]);
-                        File dst = new File(getCacheDir(), "split_" + src.getName());
-                        FileInputStream fis = new FileInputStream(src);
-                        FileOutputStream fos = new FileOutputStream(dst);
-                        byte[] buf = new byte[8192];
-                        int len;
-                        while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
-                        fos.close();
-                        fis.close();
-                        cachedSplitPaths[i] = dst.getAbsolutePath();
+                boolean success = shellInstall();
+                mainHandler.post(() -> {
+                    if (success) {
+                        log("Install complete!");
+                        Toast.makeText(this, "Installed successfully!", Toast.LENGTH_LONG).show();
+                    } else {
+                        log("Shell install failed. Manual install needed:");
+                        log("  1. Uninstall original app");
+                        log("  2. adb install-multiple patched.apk split1.apk split2.apk");
                     }
-                    log("Cached " + cachedSplitPaths.length + " split APKs");
-                }
+                });
             } catch (Exception e) {
-                cachedSplitPaths = null;
+                mainHandler.post(() -> log("Install error: " + e.getMessage()));
             }
-        }
+        }).start();
+    }
 
-        // Check if original app is still installed
-        if (selectedPackageName != null) {
-            try {
-                getPackageManager().getPackageInfo(selectedPackageName, 0);
-                // Still installed — uninstall first, then auto-continue
-                log("Uninstalling original app...");
-                pendingInstallSession = true;
-                Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
-                        Uri.parse("package:" + selectedPackageName));
-                startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
-                return;
-            } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                // Already gone, proceed
+    private void cacheSplitApks() {
+        if (selectedPackageName == null || cachedSplitPaths != null) return;
+        try {
+            android.content.pm.ApplicationInfo ai = getPackageManager()
+                    .getApplicationInfo(selectedPackageName, 0);
+            if (ai.splitSourceDirs != null) {
+                cachedSplitPaths = new String[ai.splitSourceDirs.length];
+                for (int i = 0; i < ai.splitSourceDirs.length; i++) {
+                    File src = new File(ai.splitSourceDirs[i]);
+                    File dst = new File(getCacheDir(), "split_" + src.getName());
+                    FileInputStream fis = new FileInputStream(src);
+                    FileOutputStream fos = new FileOutputStream(dst);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
+                    fos.close();
+                    fis.close();
+                    cachedSplitPaths[i] = dst.getAbsolutePath();
+                }
             }
+        } catch (Exception e) {
+            cachedSplitPaths = null;
         }
+    }
 
-        doInstall();
+    private boolean shellInstall() {
+        try {
+            // Step 1: Uninstall original (ignore errors if not installed)
+            if (selectedPackageName != null) {
+                Process p = Runtime.getRuntime().exec(new String[]{
+                        "pm", "uninstall", selectedPackageName});
+                p.waitFor();
+            }
+
+            // Step 2: Build install command
+            StringBuilder cmd = new StringBuilder("pm install-multiple -r");
+            cmd.append(" ").append(patchedApk.getAbsolutePath());
+
+            // Re-sign and add split APKs
+            if (cachedSplitPaths != null) {
+                for (String splitPath : cachedSplitPaths) {
+                    File splitFile = new File(splitPath);
+                    File resignedSplit = new File(getCacheDir(), "rs_" + splitFile.getName());
+                    resignApk(splitFile, resignedSplit);
+                    cmd.append(" ").append(resignedSplit.getAbsolutePath());
+                }
+            }
+
+            mainHandler.post(() -> log("Running: pm install-multiple ..."));
+
+            // Step 3: Execute install
+            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd.toString()});
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream()));
+            java.io.BufferedReader errReader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getErrorStream()));
+            String line;
+            StringBuilder output = new StringBuilder();
+            while ((line = reader.readLine()) != null) output.append(line).append("\n");
+            while ((line = errReader.readLine()) != null) output.append(line).append("\n");
+            p.waitFor();
+
+            String result = output.toString().trim();
+            mainHandler.post(() -> log("pm result: " + result));
+
+            // Cleanup re-signed splits
+            if (cachedSplitPaths != null) {
+                for (String sp : cachedSplitPaths) {
+                    new File(sp).delete();
+                    new File(getCacheDir(), "rs_" + new File(sp).getName()).delete();
+                }
+            }
+
+            return result.contains("Success");
+        } catch (Exception e) {
+            mainHandler.post(() -> log("Shell install error: " + e.getMessage()));
+            return false;
+        }
     }
 
     private void doInstall() {
