@@ -187,7 +187,15 @@ public class PatchEngine {
                 if (entry.getName().matches("classes\\d*\\.dex")) continue;
                 if (entry.getName().startsWith("META-INF/")) continue; // Will be re-signed
 
-                zos.putNextEntry(new ZipEntry(entry.getName()));
+                ZipEntry newEntry = new ZipEntry(entry.getName());
+                // Keep .so files uncompressed (required for extractNativeLibs=false)
+                if (entry.getName().endsWith(".so") && entry.getMethod() == ZipEntry.STORED) {
+                    newEntry.setMethod(ZipEntry.STORED);
+                    newEntry.setSize(entry.getSize());
+                    newEntry.setCompressedSize(entry.getSize());
+                    newEntry.setCrc(entry.getCrc());
+                }
+                zos.putNextEntry(newEntry);
                 InputStream is = src.getInputStream(entry);
                 copyStream(is, zos);
                 is.close();
@@ -207,10 +215,17 @@ public class PatchEngine {
                 for (String soName : assets.list("payload/lib/" + abi)) {
                     String entryName = "lib/" + abi + "/" + soName;
                     if (!written.contains(entryName)) {
-                        zos.putNextEntry(new ZipEntry(entryName));
-                        InputStream is = assets.open("payload/lib/" + abi + "/" + soName);
-                        copyStream(is, zos);
-                        is.close();
+                        // .so must be STORED (uncompressed) for Android
+                        byte[] soBytes = readAssetBytes(assets, "payload/lib/" + abi + "/" + soName);
+                        ZipEntry soEntry = new ZipEntry(entryName);
+                        soEntry.setMethod(ZipEntry.STORED);
+                        soEntry.setSize(soBytes.length);
+                        soEntry.setCompressedSize(soBytes.length);
+                        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                        crc.update(soBytes);
+                        soEntry.setCrc(crc.getValue());
+                        zos.putNextEntry(soEntry);
+                        zos.write(soBytes);
                         zos.closeEntry();
                     }
                 }
@@ -273,6 +288,16 @@ public class PatchEngine {
         copyStream(is, fos);
         is.close();
         fos.close();
+    }
+
+    private byte[] readAssetBytes(AssetManager assets, String path) throws IOException {
+        InputStream is = assets.open(path);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = is.read(buf)) > 0) bos.write(buf, 0, len);
+        is.close();
+        return bos.toByteArray();
     }
 
     private void copyAsset(AssetManager assets, String src, File dst) throws IOException {
