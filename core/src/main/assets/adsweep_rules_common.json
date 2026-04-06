@@ -208,6 +208,24 @@
       "enabled": true,
       "source": "BUILTIN",
       "sdkName": "Pangle (ByteDance)"
+    },
+    {
+      "id": "ump-load-show-consent",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadAndShowConsentFormIfRequired",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Google UMP"
+    },
+    {
+      "id": "ump-load-consent-form",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadConsentForm",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Google UMP"
     }
   ]
 }

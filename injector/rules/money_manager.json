@@ -60,6 +60,36 @@
       "source": "MANUAL",
       "sdkName": "Remote Request",
       "notes": "Block remote API requests"
+    },
+    {
+      "id": "mm-gdpr-consent",
+      "className": "com.realbyte.money.ad.gdpr.GDPRConsent",
+      "methodName": "n",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "GDPR Consent",
+      "notes": "Block GDPR consent dialog that covers the screen"
+    },
+    {
+      "id": "mm-ump-load-consent",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadAndShowConsentFormIfRequired",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "UMP Consent",
+      "notes": "Block Google UMP consent form"
+    },
+    {
+      "id": "mm-ump-load-form",
+      "className": "com.google.android.ump.UserMessagingPlatform",
+      "methodName": "loadConsentForm",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "MANUAL",
+      "sdkName": "UMP Consent",
+      "notes": "Block Google UMP consent form loading"
     }
   ]
 }
