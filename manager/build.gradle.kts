@@ -34,4 +34,6 @@ dependencies {
     implementation("com.android.tools.smali:smali:3.0.7")
     // APK signing
     implementation("com.android.tools.build:apksig:8.7.3")
+    // ZIP handling (java.util.zip on Android doesn't respect STORED)
+    implementation("org.apache.commons:commons-compress:1.27.1")
 }

@@ -64,6 +64,10 @@ public class PatchEngine {
     private void doPatch(File inputApk, File appRules) throws Exception {
         File workDir = new File(context.getCacheDir(), "adsweep_work");
         File outputApk = new File(context.getFilesDir(), "patched/patched.apk");
+        // Clean old outputs
+        if (outputApk.exists()) outputApk.delete();
+        File debugApk = new File(context.getFilesDir(), "patched/unsigned_debug.apk");
+        if (debugApk.exists()) debugApk.delete();
         outputApk.getParentFile().mkdirs();
         deleteRecursive(workDir);
         workDir.mkdirs();
@@ -94,11 +98,20 @@ public class PatchEngine {
         progress("Patching manifest...");
         ManifestPatcher.patch(unsignedApk);
 
-        // Step 4: Sign with v1 JAR signing (preserves ZIP structure)
+        // Step 4: Sign
         progress("Signing APK...");
-        jarSign(unsignedApk);
-        outputApk.getParentFile().mkdirs();
-        unsignedApk.renameTo(outputApk);
+        signApk(unsignedApk, outputApk);
+
+        // Debug: keep unsigned for verification
+        // (TODO: remove in production)
+        File debugUnsigned = new File(context.getFilesDir(), "patched/unsigned_debug.apk");
+        if (unsignedApk.exists()) {
+            FileInputStream debugFis = new FileInputStream(unsignedApk);
+            FileOutputStream debugFos = new FileOutputStream(debugUnsigned);
+            copyStream(debugFis, debugFos);
+            debugFis.close();
+            debugFos.close();
+        }
 
         deleteRecursive(workDir);
         progress("Done!");
@@ -177,93 +190,87 @@ public class PatchEngine {
                                   File appRules, File outputApk) throws Exception {
         AssetManager assets = context.getAssets();
 
-        try (ZipFile src = new ZipFile(originalApk);
-             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(outputApk))) {
+        // Use Apache Commons Compress (java.util.zip on Android ignores STORED)
+        try (ZipFile src = new ZipFile(originalApk)) {
+            org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos =
+                    new org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream(outputApk);
 
             Set<String> written = new HashSet<>();
 
-            // Copy original entries (skip DEX files)
+            // Copy original entries (skip DEX + META-INF), preserve compression
             Enumeration<? extends ZipEntry> entries = src.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 if (entry.getName().matches("classes\\d*\\.dex")) continue;
-                if (entry.getName().startsWith("META-INF/")) continue; // Will be re-signed
+                if (entry.getName().startsWith("META-INF/")) continue;
 
-                // Store ALL entries as STORED (uncompressed)
-                // apksig rewrites ZIP and may recompress, but setAlignmentPreserved
-                // should keep STORED entries. Using STORED for everything ensures compatibility.
-                String name = entry.getName();
-                byte[] entryBytes = readStreamBytes(src.getInputStream(entry));
-                ZipEntry newEntry = new ZipEntry(name);
-                newEntry.setMethod(ZipEntry.STORED);
-                newEntry.setSize(entryBytes.length);
-                newEntry.setCompressedSize(entryBytes.length);
-                java.util.zip.CRC32 crc32 = new java.util.zip.CRC32();
-                crc32.update(entryBytes);
-                newEntry.setCrc(crc32.getValue());
-                zos.putNextEntry(newEntry);
-                zos.write(entryBytes);
-                zos.closeEntry();
-                written.add(name);
+                byte[] data = readStreamBytes(src.getInputStream(entry));
+                addStoredEntry(zos, entry.getName(), data);
+                written.add(entry.getName());
             }
 
-            // Write patched DEX files (STORED, uncompressed)
+            // Write patched DEX files (STORED)
             for (Map.Entry<String, byte[]> dex : dexes.entrySet()) {
-                byte[] dexBytes = dex.getValue();
-                ZipEntry dexEntry = new ZipEntry(dex.getKey());
-                dexEntry.setMethod(ZipEntry.STORED);
-                dexEntry.setSize(dexBytes.length);
-                dexEntry.setCompressedSize(dexBytes.length);
-                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
-                crc.update(dexBytes);
-                dexEntry.setCrc(crc.getValue());
-                zos.putNextEntry(dexEntry);
-                zos.write(dexBytes);
-                zos.closeEntry();
+                byte[] data = dex.getValue();
+                org.apache.commons.compress.archivers.zip.ZipArchiveEntry ne =
+                        new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(dex.getKey());
+                ne.setMethod(org.apache.commons.compress.archivers.zip.ZipArchiveEntry.STORED);
+                ne.setSize(data.length);
+                ne.setCompressedSize(data.length);
+                ne.setCrc(calcCrc32(data));
+                zos.putArchiveEntry(ne);
+                zos.write(data);
+                zos.closeArchiveEntry();
             }
 
-            // Add .so files
+            // Add .so files (STORED)
             for (String abi : new String[]{"arm64-v8a", "armeabi-v7a"}) {
                 for (String soName : assets.list("payload/lib/" + abi)) {
                     String entryName = "lib/" + abi + "/" + soName;
                     if (!written.contains(entryName)) {
-                        // .so must be STORED (uncompressed) for Android
-                        byte[] soBytes = readAssetBytes(assets, "payload/lib/" + abi + "/" + soName);
-                        ZipEntry soEntry = new ZipEntry(entryName);
-                        soEntry.setMethod(ZipEntry.STORED);
-                        soEntry.setSize(soBytes.length);
-                        soEntry.setCompressedSize(soBytes.length);
-                        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
-                        crc.update(soBytes);
-                        soEntry.setCrc(crc.getValue());
-                        zos.putNextEntry(soEntry);
-                        zos.write(soBytes);
-                        zos.closeEntry();
+                        byte[] data = readAssetBytes(assets, "payload/lib/" + abi + "/" + soName);
+                        addStoredEntry(zos, entryName, data);
                     }
                 }
             }
 
-            // Add assets
+            // Add assets (DEFLATED is fine for these)
             for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
                 String entryName = "assets/" + name;
                 if (!written.contains(entryName)) {
-                    zos.putNextEntry(new ZipEntry(entryName));
-                    InputStream is = assets.open("payload/" + name);
-                    copyStream(is, zos);
-                    is.close();
-                    zos.closeEntry();
+                    byte[] data = readAssetBytes(assets, "payload/" + name);
+                    addStoredEntry(zos, entryName, data);
                 }
             }
 
-            // Add app rules if provided
+            // Add app rules
             if (appRules != null && appRules.exists()) {
-                zos.putNextEntry(new ZipEntry("assets/adsweep_rules_app.json"));
-                FileInputStream fis = new FileInputStream(appRules);
-                copyStream(fis, zos);
-                fis.close();
-                zos.closeEntry();
+                addStoredEntry(zos, "assets/adsweep_rules_app.json", readBytes(appRules));
             }
+
+            zos.close();
         }
+    }
+
+    private void addStoredEntry(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
+                                 String name, byte[] data) throws Exception {
+        Log.d(TAG, "addStoredEntry: " + name + " size=" + data.length
+                + " STORED_const=" + org.apache.commons.compress.archivers.zip.ZipArchiveEntry.STORED);
+        org.apache.commons.compress.archivers.zip.ZipArchiveEntry e =
+                new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
+        e.setMethod(0); // 0 = STORED, use literal to avoid constant confusion
+        e.setSize(data.length);
+        e.setCompressedSize(data.length);
+        e.setCrc(calcCrc32(data));
+        zos.putArchiveEntry(e);
+        zos.write(data);
+        zos.closeArchiveEntry();
+    }
+
+    private long calcCrc32(byte[] data) {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(data);
+        return crc.getValue();
     }
 
     // --- Sign APK ---
