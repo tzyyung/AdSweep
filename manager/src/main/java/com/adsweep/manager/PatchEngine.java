@@ -238,16 +238,18 @@ public class PatchEngine {
     // --- Sign APK ---
 
     private void signApk(File unsignedApk, File outputApk) throws Exception {
-        // Generate key pair + self-signed cert on the fly
-        java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("RSA");
-        kpg.initialize(2048);
-        java.security.KeyPair kp = kpg.generateKeyPair();
+        // Load bundled PKCS12 keystore from assets
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        InputStream ksStream = context.getAssets().open("debug.p12");
+        ks.load(ksStream, "android".toCharArray());
+        ksStream.close();
 
-        // Self-signed cert via Android KeyStore API
-        java.security.cert.X509Certificate cert = createSelfSignedCert(kp);
+        PrivateKey key = (PrivateKey) ks.getKey("debugkey", "android".toCharArray());
+        java.security.cert.X509Certificate cert =
+                (java.security.cert.X509Certificate) ks.getCertificate("debugkey");
 
         ApkSigner.SignerConfig signerConfig = new ApkSigner.SignerConfig.Builder(
-                "adsweep", kp.getPrivate(), Collections.singletonList(cert)).build();
+                "debugkey", key, Collections.singletonList(cert)).build();
 
         ApkSigner signer = new ApkSigner.Builder(Collections.singletonList(signerConfig))
                 .setInputApk(unsignedApk)
@@ -256,65 +258,6 @@ public class PatchEngine {
                 .setV2SigningEnabled(true)
                 .build();
         signer.sign();
-    }
-
-    private java.security.cert.X509Certificate createSelfSignedCert(java.security.KeyPair kp) throws Exception {
-        // Build a minimal self-signed X.509 v1 certificate manually
-        // using Android's Conscrypt/BouncyCastle runtime classes
-
-        long now = System.currentTimeMillis();
-        java.util.Date notBefore = new java.util.Date(now);
-        java.util.Date notAfter = new java.util.Date(now + 10L * 365 * 24 * 60 * 60 * 1000);
-
-        // Use Android's internal sun.security.x509 classes (available on all Android versions)
-        Class<?> x500NameClass = Class.forName("sun.security.x509.X500Name");
-        Object issuer = x500NameClass.getConstructor(String.class).newInstance("CN=AdSweep");
-
-        Class<?> certInfoClass = Class.forName("sun.security.x509.X509CertInfo");
-        Object certInfo = certInfoClass.getConstructor().newInstance();
-
-        // Set validity
-        Class<?> validityClass = Class.forName("sun.security.x509.CertificateValidity");
-        Object validity = validityClass.getConstructor(java.util.Date.class, java.util.Date.class)
-                .newInstance(notBefore, notAfter);
-
-        // Set serial number
-        Class<?> serialClass = Class.forName("sun.security.x509.CertificateSerialNumber");
-        Object serial = serialClass.getConstructor(int.class).newInstance((int)(now / 1000));
-
-        // Set algorithm
-        Class<?> algoIdClass = Class.forName("sun.security.x509.AlgorithmId");
-        Object sha256rsa = algoIdClass.getField("sha256WithRSAEncryption_oid").get(null);
-        Class<?> certAlgoClass = Class.forName("sun.security.x509.CertificateAlgorithmId");
-        Object certAlgo = certAlgoClass.getConstructor(algoIdClass).newInstance(
-                algoIdClass.getConstructor(Class.forName("sun.security.util.ObjectIdentifier"))
-                        .newInstance(sha256rsa));
-
-        // Set subject/issuer/key/version
-        Class<?> certVersionClass = Class.forName("sun.security.x509.CertificateVersion");
-        Class<?> certKeyClass = Class.forName("sun.security.x509.CertificateX509Key");
-        Class<?> certSubjClass = Class.forName("sun.security.x509.CertificateSubjectName");
-        Class<?> certIssuerClass = Class.forName("sun.security.x509.CertificateIssuerName");
-
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "validity", validity);
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "serialNumber", serial);
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "algorithmID", certAlgo);
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "subject",
-                certSubjClass.getConstructor(x500NameClass).newInstance(issuer));
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "issuer",
-                certIssuerClass.getConstructor(x500NameClass).newInstance(issuer));
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "key",
-                certKeyClass.getConstructor(java.security.PublicKey.class).newInstance(kp.getPublic()));
-        certInfoClass.getMethod("set", String.class, Object.class).invoke(certInfo, "version",
-                certVersionClass.getConstructor(int.class).newInstance(2)); // v3
-
-        // Create and sign
-        Class<?> x509CertImplClass = Class.forName("sun.security.x509.X509CertImpl");
-        Object cert = x509CertImplClass.getConstructor(certInfoClass).newInstance(certInfo);
-        x509CertImplClass.getMethod("sign", PrivateKey.class, String.class)
-                .invoke(cert, kp.getPrivate(), "SHA256withRSA");
-
-        return (java.security.cert.X509Certificate) cert;
     }
 
     // --- Utilities ---
