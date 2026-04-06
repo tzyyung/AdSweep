@@ -94,6 +94,8 @@ graph LR
 | [doc/DESIGN.md](doc/DESIGN.md) | 設計決策與演進 |
 | [doc/RULES.md](doc/RULES.md) | 規則系統說明與自訂規則教學 |
 | [doc/BUILD.md](doc/BUILD.md) | 建置與開發指南 |
+| [doc/RULE_ENGINE.md](doc/RULE_ENGINE.md) | 規則引擎設計（條件式攔截、域名清單整合） |
+| [doc/RULE_REPOSITORY.md](doc/RULE_REPOSITORY.md) | 規則倉庫設計（社群分享、自動下載） |
 
 ## 支援的廣告 SDK（通用規則）
 
