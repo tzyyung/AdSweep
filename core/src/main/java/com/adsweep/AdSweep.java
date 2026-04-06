@@ -5,6 +5,8 @@ import android.util.Log;
 
 import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
+import com.adsweep.hook.LayerThreeMonitor;
+import com.adsweep.reporter.FloatingReporter;
 
 /**
  * AdSweep entry point. Called from the target app's Application.onCreate().
@@ -40,6 +42,11 @@ public final class AdSweep {
 
         hookManager = new HookManager(context);
         hookManager.initialize();
+
+        // Initialize Layer 3: floating reporter + runtime monitors
+        FloatingReporter.init(context, hookManager.getRuleStore());
+        LayerThreeMonitor l3 = new LayerThreeMonitor(context);
+        l3.installMonitors();
 
         initialized = true;
         Log.i(TAG, "=== AdSweep Ready: " + hookManager.getActiveHookCount() + " hooks active ===");
