@@ -187,6 +187,79 @@ def scan_file_heuristics(smali_path: str, smali_root: str, report: Dict):
                 })
 
 
+def generate_suggested_rules(decompiled_dir: str, report: Dict) -> List[Dict]:
+    """
+    Generate suggested hook rules from scan results.
+    Scans found SDK packages for common ad-loading method patterns.
+    """
+    suggested = []
+    smali_dirs = sorted(glob.glob(os.path.join(decompiled_dir, "smali*")))
+
+    # Method name patterns that are likely ad-loading entry points
+    AD_METHOD_PATTERNS = [
+        (r"\.method\s+public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(\w*(?:load|show|init|start|fetch|request|display|present)\w*)\(", "BLOCK_RETURN_VOID"),
+    ]
+
+    for sdk_info in report["found_sdks"]:
+        package_path = sdk_info["package"].replace(".", "/")
+
+        for smali_dir in smali_dirs:
+            sdk_dir = os.path.join(smali_dir, package_path)
+            if not os.path.isdir(sdk_dir):
+                continue
+
+            # Scan top-level smali files in SDK package for ad methods
+            for smali_file in glob.glob(os.path.join(sdk_dir, "*.smali")):
+                class_name_path = os.path.relpath(smali_file, smali_dir)
+                class_name = class_name_path.replace("/", ".").replace(".smali", "")
+
+                try:
+                    with open(smali_file, "r", errors="ignore") as f:
+                        content = f.read()
+                except Exception:
+                    continue
+
+                for pattern, default_action in AD_METHOD_PATTERNS:
+                    for match in re.finditer(pattern, content):
+                        method_name = match.group(1)
+                        # Skip constructors, getters, setters, listeners
+                        if method_name.startswith(("get", "set", "is", "has", "on", "add", "remove")):
+                            continue
+                        if method_name in ("toString", "hashCode", "equals", "clone"):
+                            continue
+
+                        rule_id = f"scan-{sdk_info['sdk'].lower().replace(' ', '-')}-{class_name.split('.')[-1]}-{method_name}"
+                        suggested.append({
+                            "id": rule_id,
+                            "className": class_name,
+                            "methodName": method_name,
+                            "action": default_action,
+                            "enabled": True,
+                            "source": "LAYER2_SCAN",
+                            "sdkName": sdk_info["sdk"],
+                            "confidence": sdk_info["confidence"],
+                        })
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for rule in suggested:
+        key = f"{rule['className']}.{rule['methodName']}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(rule)
+
+    return unique
+
+
+def save_suggested_rules(rules: List[Dict], output_path: str):
+    """Save suggested rules as a JSON file ready to use with --rules."""
+    data = {"version": 1, "rules": rules}
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"[+] Suggested rules saved to {output_path} ({len(rules)} rules)")
+
+
 def save_report(report: Dict, output_path: str):
     """Save scan report to JSON file."""
     with open(output_path, "w") as f:

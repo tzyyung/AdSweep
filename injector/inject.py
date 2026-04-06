@@ -20,7 +20,7 @@ import tempfile
 
 from config import validate_tools
 from decompiler import decompile
-from scanner import scan, save_report
+from scanner import scan, save_report, generate_suggested_rules, save_suggested_rules
 from patcher import patch
 from packager import package_apk
 
@@ -78,6 +78,13 @@ def main():
                 print(f"\n[*] Found {len(report['found_sdks'])} ad SDKs:")
                 for sdk in report["found_sdks"]:
                     print(f"    - {sdk['sdk']} ({sdk['smali_files']} files)")
+
+            # Generate suggested rules from scan
+            suggested = generate_suggested_rules(decompiled_dir, report)
+            if suggested:
+                suggested_path = os.path.join(work_dir, "suggested_rules.json")
+                save_suggested_rules(suggested, suggested_path)
+                print(f"[*] Use these as app rules: --rules {suggested_path}")
             print()
 
         # Step 2b: Copy app-specific rules if provided
