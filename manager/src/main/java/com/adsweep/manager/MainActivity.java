@@ -17,6 +17,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * AdSweep Manager — Main screen for selecting, scanning, and patching APKs.
@@ -402,45 +404,67 @@ public class MainActivity extends Activity {
 
     private boolean shellInstall() {
         try {
-            // Step 1: Uninstall original (ignore errors if not installed)
+            // Step 1: Uninstall original
             if (selectedPackageName != null) {
-                Process p = Runtime.getRuntime().exec(new String[]{
-                        "pm", "uninstall", selectedPackageName});
-                p.waitFor();
+                mainHandler.post(() -> log("Uninstalling " + selectedPackageName + "..."));
+                execShell("pm uninstall " + selectedPackageName);
             }
 
-            // Step 2: Build install command
-            StringBuilder cmd = new StringBuilder("pm install-multiple -r");
-            cmd.append(" ").append(patchedApk.getAbsolutePath());
+            // Step 2: Collect APK files (re-sign splits)
+            List<File> apksToInstall = new ArrayList<>();
+            apksToInstall.add(patchedApk);
 
-            // Re-sign and add split APKs
             if (cachedSplitPaths != null) {
                 for (String splitPath : cachedSplitPaths) {
                     File splitFile = new File(splitPath);
-                    File resignedSplit = new File(getCacheDir(), "rs_" + splitFile.getName());
-                    resignApk(splitFile, resignedSplit);
-                    cmd.append(" ").append(resignedSplit.getAbsolutePath());
+                    File resigned = new File(getCacheDir(), "rs_" + splitFile.getName());
+                    mainHandler.post(() -> log("Re-signing split..."));
+                    resignApk(splitFile, resigned);
+                    apksToInstall.add(resigned);
                 }
             }
 
-            mainHandler.post(() -> log("Running: pm install-multiple ..."));
+            // Step 3: Calculate total size
+            long totalSize = 0;
+            for (File f : apksToInstall) totalSize += f.length();
 
-            // Step 3: Execute install
-            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd.toString()});
-            java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(p.getInputStream()));
-            java.io.BufferedReader errReader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(p.getErrorStream()));
-            String line;
-            StringBuilder output = new StringBuilder();
-            while ((line = reader.readLine()) != null) output.append(line).append("\n");
-            while ((line = errReader.readLine()) != null) output.append(line).append("\n");
-            p.waitFor();
+            // Step 4: Create install session
+            mainHandler.post(() -> log("Creating install session..."));
+            String createResult = execShell("pm install-create -S " + totalSize);
+            // Parse session ID from "Success: created install session [12345]"
+            int sessionId = -1;
+            if (createResult.contains("[")) {
+                String idStr = createResult.substring(
+                        createResult.indexOf("[") + 1, createResult.indexOf("]"));
+                sessionId = Integer.parseInt(idStr.trim());
+            }
+            if (sessionId < 0) {
+                mainHandler.post(() -> log("Failed to create session: " + createResult));
+                return false;
+            }
+            mainHandler.post(() -> log("Session created"));
 
-            String result = output.toString().trim();
-            mainHandler.post(() -> log("pm result: " + result));
+            // Step 5: Write each APK to session
+            for (int i = 0; i < apksToInstall.size(); i++) {
+                File apk = apksToInstall.get(i);
+                String name = apk.getName();
+                long size = apk.length();
+                String writeCmd = "pm install-write -S " + size + " " + sessionId + " " + name + " " + apk.getAbsolutePath();
+                mainHandler.post(() -> log("Writing " + name + "..."));
+                String writeResult = execShell(writeCmd);
+                if (!writeResult.contains("Success")) {
+                    mainHandler.post(() -> log("Write failed: " + writeResult));
+                    execShell("pm install-abandon " + sessionId);
+                    return false;
+                }
+            }
 
-            // Cleanup re-signed splits
+            // Step 6: Commit session
+            mainHandler.post(() -> log("Committing install..."));
+            String commitResult = execShell("pm install-commit " + sessionId);
+            mainHandler.post(() -> log("Result: " + commitResult));
+
+            // Cleanup
             if (cachedSplitPaths != null) {
                 for (String sp : cachedSplitPaths) {
                     new File(sp).delete();
@@ -448,11 +472,25 @@ public class MainActivity extends Activity {
                 }
             }
 
-            return result.contains("Success");
+            return commitResult.contains("Success");
         } catch (Exception e) {
-            mainHandler.post(() -> log("Shell install error: " + e.getMessage()));
+            mainHandler.post(() -> log("Install error: " + e.getMessage()));
             return false;
         }
+    }
+
+    private String execShell(String cmd) throws Exception {
+        Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+        java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getInputStream()));
+        java.io.BufferedReader errReader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getErrorStream()));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+        while ((line = errReader.readLine()) != null) sb.append(line).append("\n");
+        p.waitFor();
+        return sb.toString().trim();
     }
 
     private void doInstall() {
