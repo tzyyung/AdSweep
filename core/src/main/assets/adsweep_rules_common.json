@@ -2,8 +2,8 @@
   "version": 1,
   "rules": [
     {
-      "id": "admob-adview-load",
-      "className": "com.google.android.gms.ads.AdView",
+      "id": "admob-baseadview-load",
+      "className": "com.google.android.gms.ads.BaseAdView",
       "methodName": "loadAd",
       "paramTypes": ["com.google.android.gms.ads.AdRequest"],
       "action": "BLOCK_RETURN_VOID",
@@ -30,9 +30,9 @@
       "sdkName": "AdMob"
     },
     {
-      "id": "admob-nativead-load",
-      "className": "com.google.android.gms.ads.nativead.NativeAd",
-      "methodName": "load",
+      "id": "admob-adloader-load",
+      "className": "com.google.android.gms.ads.AdLoader",
+      "methodName": "loadAd",
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
@@ -50,7 +50,7 @@
     {
       "id": "applovin-sdk-init",
       "className": "com.applovin.sdk.AppLovinSdk",
-      "methodName": "initializeSdk",
+      "methodName": "initialize",
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
@@ -93,18 +93,18 @@
       "sdkName": "Facebook Audience Network"
     },
     {
-      "id": "ironsource-init",
+      "id": "ironsource-demandonly-interstitial",
       "className": "com.ironsource.mediationsdk.IronSource",
-      "methodName": "init",
+      "methodName": "loadISDemandOnlyInterstitial",
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
       "sdkName": "IronSource"
     },
     {
-      "id": "ironsource-interstitial-load",
+      "id": "ironsource-demandonly-rewarded",
       "className": "com.ironsource.mediationsdk.IronSource",
-      "methodName": "loadInterstitial",
+      "methodName": "loadISDemandOnlyRewardedVideo",
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
