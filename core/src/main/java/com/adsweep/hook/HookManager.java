@@ -74,7 +74,7 @@ public class HookManager {
     public boolean installHook(Rule rule, Method targetMethod) {
         String key = rule.className + "." + rule.methodName;
 
-        BlockCallback callback = new BlockCallback(key);
+        BlockCallback callback = new BlockCallback(key, rule.action);
         try {
             Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
             Method backup = HookEngine.hook(targetMethod, callback, callbackMethod);
