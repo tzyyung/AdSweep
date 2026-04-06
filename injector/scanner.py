@@ -1,0 +1,194 @@
+"""
+AdSweep Injector - Layer 2 static heuristic scanner.
+
+Scans decompiled smali files for known ad SDK signatures and suspicious patterns.
+"""
+import os
+import re
+import json
+import glob
+from typing import List, Dict
+
+# Known ad SDK package patterns and their associated rules
+KNOWN_SDK_PATTERNS = {
+    "AdMob": {
+        "packages": ["com/google/android/gms/ads"],
+        "confidence": 1.0,
+    },
+    "AppLovin": {
+        "packages": ["com/applovin/sdk", "com/applovin/mediation"],
+        "confidence": 1.0,
+    },
+    "Facebook Audience Network": {
+        "packages": ["com/facebook/ads"],
+        "confidence": 1.0,
+    },
+    "IronSource": {
+        "packages": ["com/ironsource/mediationsdk"],
+        "confidence": 1.0,
+    },
+    "Unity Ads": {
+        "packages": ["com/unity3d/ads"],
+        "confidence": 1.0,
+    },
+    "Vungle": {
+        "packages": ["com/vungle/ads", "com/vungle/warren"],
+        "confidence": 1.0,
+    },
+    "AdColony": {
+        "packages": ["com/adcolony/sdk"],
+        "confidence": 1.0,
+    },
+    "InMobi": {
+        "packages": ["com/inmobi/sdk", "com/inmobi/ads"],
+        "confidence": 1.0,
+    },
+    "Chartboost": {
+        "packages": ["com/chartboost/sdk"],
+        "confidence": 1.0,
+    },
+    "MoPub": {
+        "packages": ["com/mopub"],
+        "confidence": 1.0,
+    },
+    "Kakao AdFit": {
+        "packages": ["com/kakao/adfit"],
+        "confidence": 1.0,
+    },
+    "Coupang Ads": {
+        "packages": ["com/coupang/ads"],
+        "confidence": 1.0,
+    },
+    "StartApp": {
+        "packages": ["com/startapp/sdk"],
+        "confidence": 1.0,
+    },
+    "Pangle (ByteDance)": {
+        "packages": ["com/bytedance/sdk/openadsdk"],
+        "confidence": 1.0,
+    },
+}
+
+# Heuristic patterns for unknown ad code
+HEURISTIC_PATTERNS = [
+    {
+        "name": "ad_inheritance",
+        "description": "Class extends a known ad base class",
+        "regex": r"\.super\s+L[^;]*(?:AdView|BannerAd|InterstitialAd|NativeAd|RewardedAd|AdListener);",
+        "confidence": 0.8,
+    },
+    {
+        "name": "ad_string_admob_id",
+        "description": "Contains AdMob app/unit ID format",
+        "regex": r'const-string [vp]\d+, "ca-app-pub-\d+[~/]\d+"',
+        "confidence": 0.9,
+    },
+    {
+        "name": "ad_string_generic",
+        "description": "Contains ad-related string constants",
+        "regex": r'const-string [vp]\d+, ".*?(?:adunit|ad_unit|adUnitId|interstitial_ad|banner_ad|rewarded_ad).*?"',
+        "confidence": 0.6,
+    },
+    {
+        "name": "webview_ad_combo",
+        "description": "WebView.loadUrl + timer in same class (common ad pattern)",
+        "regex": None,  # Multi-pattern, handled separately
+        "multi_patterns": [
+            r"invoke-virtual.*Landroid/webkit/WebView;->loadUrl",
+            r"Landroid/os/CountDownTimer",
+        ],
+        "confidence": 0.7,
+    },
+]
+
+
+def scan(decompiled_dir: str) -> Dict:
+    """
+    Scan a decompiled APK directory for ad-related code.
+    Returns a scan report dict.
+    """
+    print("[*] Running Layer 2 static scan...")
+
+    report = {
+        "found_sdks": [],
+        "heuristic_findings": [],
+        "summary": {},
+    }
+
+    smali_dirs = sorted(glob.glob(os.path.join(decompiled_dir, "smali*")))
+
+    # Phase 1: Check for known SDK packages
+    for sdk_name, sdk_info in KNOWN_SDK_PATTERNS.items():
+        for package_path in sdk_info["packages"]:
+            for smali_dir in smali_dirs:
+                full_path = os.path.join(smali_dir, package_path)
+                if os.path.isdir(full_path):
+                    smali_count = len(glob.glob(os.path.join(full_path, "**/*.smali"), recursive=True))
+                    report["found_sdks"].append({
+                        "sdk": sdk_name,
+                        "package": package_path.replace("/", "."),
+                        "path": full_path,
+                        "smali_files": smali_count,
+                        "confidence": sdk_info["confidence"],
+                    })
+                    print(f"  [SDK] {sdk_name}: {package_path} ({smali_count} files)")
+                    break  # Found this SDK, no need to check other packages
+
+    # Phase 2: Heuristic scan of all smali files
+    for smali_dir in smali_dirs:
+        for smali_file in glob.glob(os.path.join(smali_dir, "**/*.smali"), recursive=True):
+            scan_file_heuristics(smali_file, smali_dir, report)
+
+    # Summary
+    report["summary"] = {
+        "known_sdks_found": len(report["found_sdks"]),
+        "heuristic_findings": len(report["heuristic_findings"]),
+        "sdk_names": [s["sdk"] for s in report["found_sdks"]],
+    }
+
+    print(f"\n[+] Scan complete: {report['summary']['known_sdks_found']} known SDKs, "
+          f"{report['summary']['heuristic_findings']} heuristic findings")
+
+    return report
+
+
+def scan_file_heuristics(smali_path: str, smali_root: str, report: Dict):
+    """Apply heuristic patterns to a single smali file."""
+    try:
+        with open(smali_path, "r", errors="ignore") as f:
+            content = f.read()
+    except Exception:
+        return
+
+    relative_path = os.path.relpath(smali_path, smali_root)
+    class_name = relative_path.replace("/", ".").replace(".smali", "")
+
+    for pattern in HEURISTIC_PATTERNS:
+        if pattern.get("multi_patterns"):
+            # All patterns must match in the same file
+            if all(re.search(p, content) for p in pattern["multi_patterns"]):
+                report["heuristic_findings"].append({
+                    "pattern": pattern["name"],
+                    "description": pattern["description"],
+                    "class": class_name,
+                    "file": smali_path,
+                    "confidence": pattern["confidence"],
+                })
+        elif pattern["regex"]:
+            match = re.search(pattern["regex"], content)
+            if match:
+                report["heuristic_findings"].append({
+                    "pattern": pattern["name"],
+                    "description": pattern["description"],
+                    "class": class_name,
+                    "file": smali_path,
+                    "matched": match.group(0)[:100],
+                    "confidence": pattern["confidence"],
+                })
+
+
+def save_report(report: Dict, output_path: str):
+    """Save scan report to JSON file."""
+    with open(output_path, "w") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    print(f"[+] Scan report saved to {output_path}")
