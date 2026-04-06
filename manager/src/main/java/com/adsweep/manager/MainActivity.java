@@ -13,6 +13,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
@@ -22,6 +23,7 @@ import java.io.InputStream;
 public class MainActivity extends Activity {
 
     private static final int REQUEST_APK = 1001;
+    private static final int REQUEST_INSTALLED_APP = 1002;
 
     private TextView tvApkInfo;
     private TextView tvScanResults;
@@ -63,21 +65,80 @@ public class MainActivity extends Activity {
     }
 
     private void selectApk() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/vnd.android.package-archive");
-        startActivityForResult(intent, REQUEST_APK);
+        // Show choice dialog: file picker or installed apps
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Select APK Source")
+                .setItems(new String[]{"From installed apps", "From file"}, (d, which) -> {
+                    if (which == 0) {
+                        // Launch installed app list
+                        Intent intent = new Intent(this, AppListActivity.class);
+                        startActivityForResult(intent, REQUEST_INSTALLED_APP);
+                    } else {
+                        // File picker
+                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("application/vnd.android.package-archive");
+                        startActivityForResult(intent, REQUEST_APK);
+                    }
+                })
+                .show();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_APK && resultCode == RESULT_OK && data != null) {
+        if (resultCode != RESULT_OK || data == null) return;
+
+        if (requestCode == REQUEST_APK) {
             Uri uri = data.getData();
             if (uri != null) {
                 copyAndScanApk(uri);
             }
+        } else if (requestCode == REQUEST_INSTALLED_APP) {
+            String apkPath = data.getStringExtra(AppListActivity.RESULT_APK_PATH);
+            String pkgName = data.getStringExtra(AppListActivity.RESULT_PACKAGE_NAME);
+            String appName = data.getStringExtra(AppListActivity.RESULT_APP_NAME);
+            if (apkPath != null) {
+                loadInstalledApk(apkPath, pkgName, appName);
+            }
         }
+    }
+
+    private void loadInstalledApk(String apkPath, String packageName, String appName) {
+        tvApkInfo.setText("Loading...");
+
+        new Thread(() -> {
+            try {
+                // Copy APK from system to internal storage
+                File apkDir = new File(getFilesDir(), "input");
+                apkDir.mkdirs();
+                selectedApk = new File(apkDir, "target.apk");
+
+                FileInputStream fis = new FileInputStream(apkPath);
+                FileOutputStream fos = new FileOutputStream(selectedApk);
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
+                fos.close();
+                fis.close();
+
+                long sizeMb = selectedApk.length() / (1024 * 1024);
+
+                mainHandler.post(() -> {
+                    tvApkInfo.setText(appName + "\n"
+                            + packageName + "\n"
+                            + "Size: " + sizeMb + " MB");
+                    btnPatch.setEnabled(true);
+                });
+
+                // Check for rules
+                checkRulesRepo(packageName);
+
+            } catch (Exception e) {
+                mainHandler.post(() ->
+                        tvApkInfo.setText("Error: " + e.getMessage()));
+            }
+        }).start();
     }
 
     private void copyAndScanApk(Uri uri) {
