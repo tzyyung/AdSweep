@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private File selectedApk;
     private File patchedApk;
     private String selectedPackageName;
+    private String[] cachedSplitPaths;  // saved before uninstall
     private boolean pendingInstallSession = false;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -327,7 +328,30 @@ public class MainActivity extends Activity {
         if (selectedPackageName != null) {
             try {
                 getPackageManager().getPackageInfo(selectedPackageName, 0);
-                // App is installed — uninstall first
+                // App is installed — cache split paths before uninstall
+                try {
+                    android.content.pm.ApplicationInfo ai = getPackageManager()
+                            .getApplicationInfo(selectedPackageName, 0);
+                    cachedSplitPaths = ai.splitSourceDirs;
+                    // Copy splits to cache (originals will be deleted on uninstall)
+                    if (cachedSplitPaths != null) {
+                        for (int i = 0; i < cachedSplitPaths.length; i++) {
+                            File src = new File(cachedSplitPaths[i]);
+                            File dst = new File(getCacheDir(), "split_" + src.getName());
+                            FileInputStream fis = new FileInputStream(src);
+                            FileOutputStream fos = new FileOutputStream(dst);
+                            byte[] buf = new byte[8192];
+                            int len;
+                            while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
+                            fos.close();
+                            fis.close();
+                            cachedSplitPaths[i] = dst.getAbsolutePath();
+                        }
+                        log("Cached " + cachedSplitPaths.length + " split APKs");
+                    }
+                } catch (Exception e) {
+                    cachedSplitPaths = null;
+                }
                 log("Uninstalling original app...");
                 pendingInstallSession = true;
                 Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
@@ -362,9 +386,9 @@ public class MainActivity extends Activity {
                 mainHandler.post(() -> log("Writing base APK to install session..."));
                 writeApkToSession(session, patchedApk, "base.apk");
 
-                // Write split APKs from the original installed app
-                if (selectedPackageName != null) {
-                    writeSplitApks(session, selectedPackageName);
+                // Write cached split APKs (copied before uninstall)
+                if (cachedSplitPaths != null && cachedSplitPaths.length > 0) {
+                    writeSplitApks(session, cachedSplitPaths);
                 }
 
                 // Commit
@@ -402,33 +426,19 @@ public class MainActivity extends Activity {
     }
 
     private void writeSplitApks(android.content.pm.PackageInstaller.Session session,
-                                 String packageName) throws Exception {
-        // Get all APK paths for this package
-        android.content.pm.ApplicationInfo appInfo = getPackageManager()
-                .getApplicationInfo(packageName, 0);
-
-        String[] splitPaths = appInfo.splitSourceDirs;
-        if (splitPaths == null || splitPaths.length == 0) {
-            mainHandler.post(() -> log("No split APKs needed."));
-            return;
-        }
-
+                                 String[] splitPaths) throws Exception {
         for (String splitPath : splitPaths) {
             File splitFile = new File(splitPath);
             String splitName = splitFile.getName();
-            mainHandler.post(() -> log("Adding split: " + splitName));
+            // Remove "split_" prefix we added when caching
+            String sessionName = splitName.startsWith("split_") ? splitName.substring(6) : splitName;
+            mainHandler.post(() -> log("Re-signing: " + sessionName));
 
-            // Re-sign split APK with our key
-            // Actually, splits need same signature as base — we need to re-sign them too
-            // For now, copy original splits (they won't have matching signature)
-            // TODO: re-sign split APKs with the same PKCS12 key
-
-            // Re-sign split APK with our debug key
-            File resignedSplit = new File(getCacheDir(), "resigned_" + splitName);
+            File resignedSplit = new File(getCacheDir(), "resigned_" + sessionName);
             resignApk(splitFile, resignedSplit);
 
             FileInputStream fis = new FileInputStream(resignedSplit);
-            OutputStream out = session.openWrite(splitName, 0, resignedSplit.length());
+            OutputStream out = session.openWrite(sessionName, 0, resignedSplit.length());
             byte[] buf = new byte[8192];
             int len;
             while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
@@ -436,6 +446,7 @@ public class MainActivity extends Activity {
             out.close();
             fis.close();
             resignedSplit.delete();
+            splitFile.delete();
         }
         mainHandler.post(() -> log("Added " + splitPaths.length + " split APKs"));
     }
