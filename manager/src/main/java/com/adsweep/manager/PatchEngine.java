@@ -37,8 +37,12 @@ public class PatchEngine {
      * Fixes system properties that apktool expects on desktop JVM.
      */
     public static void initForAndroid(Context ctx) {
+        // apktool's OSDetection reads these in <clinit>, must be set before class load
         if (System.getProperty("os.name") == null) {
             System.setProperty("os.name", "Linux");
+        }
+        if (System.getProperty("sun.arch.data.model") == null) {
+            System.setProperty("sun.arch.data.model", "64");
         }
         if (System.getProperty("user.home") == null) {
             System.setProperty("user.home", ctx.getFilesDir().getAbsolutePath());
