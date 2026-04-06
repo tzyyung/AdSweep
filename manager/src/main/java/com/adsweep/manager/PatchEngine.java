@@ -12,6 +12,7 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.*;
+import java.util.zip.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -118,9 +119,9 @@ public class PatchEngine {
         progress("Injecting AdSweep...");
         injectInitCall(decompDir, appClass);
 
-        // Step 4: Copy payload
-        progress("Copying payload (DEX + .so + rules)...");
-        copyPayload(decompDir);
+        // Step 4: Copy payload (.so + assets only, DEX injected post-build)
+        progress("Copying payload (.so + rules)...");
+        copyPayloadWithoutDex(decompDir);
 
         // Step 5: Copy app rules if provided
         if (appRules != null && appRules.exists()) {
@@ -136,6 +137,10 @@ public class PatchEngine {
         progress("Recompiling APK...");
         File unsignedApk = new File(workDir, "unsigned.apk");
         recompileApk(decompDir, unsignedApk);
+
+        // Step 7b: Inject DEX into APK (post-build, avoids smali version mismatch)
+        progress("Injecting AdSweep DEX...");
+        injectDexIntoApk(unsignedApk);
 
         // Step 8: Sign
         progress("Signing APK...");
@@ -339,6 +344,84 @@ public class PatchEngine {
         };
         Process p = Runtime.getRuntime().exec(cmd);
         p.waitFor();
+    }
+
+    // --- Copy payload without DEX (DEX injected post-build) ---
+
+    private void copyPayloadWithoutDex(File decompDir) throws Exception {
+        AssetManager assets = context.getAssets();
+
+        // Copy .so files
+        for (String abi : new String[]{"arm64-v8a", "armeabi-v7a"}) {
+            File libDir = new File(decompDir, "lib/" + abi);
+            libDir.mkdirs();
+            for (String soName : assets.list("payload/lib/" + abi)) {
+                copyAsset(assets, "payload/lib/" + abi + "/" + soName, new File(libDir, soName));
+            }
+        }
+
+        // Copy assets (rules + domains)
+        File assetsDir = new File(decompDir, "assets");
+        assetsDir.mkdirs();
+        for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
+            copyAsset(assets, "payload/" + name, new File(assetsDir, name));
+        }
+    }
+
+    // --- Inject DEX into built APK ---
+
+    private void injectDexIntoApk(File apkFile) throws Exception {
+        AssetManager assets = context.getAssets();
+        File dexFile = new File(context.getCacheDir(), "adsweep_payload.dex");
+        copyAsset(assets, "payload/classes.dex", dexFile);
+
+        // Find next classesN.dex number
+        int nextNum = 2;
+        File tmpApk = new File(apkFile.getParent(), "tmp_inject.apk");
+        try (ZipFile zip = new ZipFile(apkFile)) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                String name = entries.nextElement().getName();
+                if (name.matches("classes\\d*\\.dex")) {
+                    if (name.equals("classes.dex")) {
+                        nextNum = Math.max(nextNum, 2);
+                    } else {
+                        int n = Integer.parseInt(name.replace("classes", "").replace(".dex", ""));
+                        nextNum = Math.max(nextNum, n + 1);
+                    }
+                }
+            }
+        }
+
+        String dexEntryName = "classes" + nextNum + ".dex";
+        progress("Adding " + dexEntryName + " to APK...");
+
+        // Copy APK + add new DEX entry
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(apkFile));
+             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tmpApk))) {
+
+            ZipEntry entry;
+            byte[] buf = new byte[8192];
+            while ((entry = zis.getNextEntry()) != null) {
+                zos.putNextEntry(new ZipEntry(entry.getName()));
+                int len;
+                while ((len = zis.read(buf)) > 0) zos.write(buf, 0, len);
+                zos.closeEntry();
+            }
+
+            // Add our DEX
+            zos.putNextEntry(new ZipEntry(dexEntryName));
+            FileInputStream fis = new FileInputStream(dexFile);
+            int len;
+            while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
+            fis.close();
+            zos.closeEntry();
+        }
+
+        // Replace original
+        apkFile.delete();
+        tmpApk.renameTo(apkFile);
+        dexFile.delete();
     }
 
     // --- Find Application class from smali ---
