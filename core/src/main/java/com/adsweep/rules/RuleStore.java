@@ -81,6 +81,20 @@ public class RuleStore {
     }
 
     /**
+     * Export all rules as JSON string.
+     */
+    public String exportRulesJson() throws Exception {
+        JSONObject root = new JSONObject();
+        root.put("version", 1);
+        JSONArray arr = new JSONArray();
+        for (Rule rule : getAllRules()) {
+            arr.put(rule.toJson());
+        }
+        root.put("rules", arr);
+        return root.toString(2);
+    }
+
+    /**
      * Add a new app-specific rule (e.g., from Layer 3 user feedback).
      */
     public void addAppRule(Rule rule) {
