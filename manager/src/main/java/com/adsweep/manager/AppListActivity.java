@@ -53,6 +53,9 @@ public class AppListActivity extends Activity {
             });
         }).start();
 
+        // Back button
+        findViewById(R.id.btnBack).setOnClickListener(v -> finish());
+
         // Search filter
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override
