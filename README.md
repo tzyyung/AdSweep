@@ -97,6 +97,7 @@ graph LR
 | [doc/RULE_ENGINE.md](doc/RULE_ENGINE.md) | 規則引擎設計（條件式攔截、域名清單整合） |
 | [doc/RULE_REPOSITORY.md](doc/RULE_REPOSITORY.md) | 規則倉庫設計（社群分享、自動下載） |
 | [doc/BUSINESS.md](doc/BUSINESS.md) | 商業分析（SWOT、競爭者、營收、法律、成長策略） |
+| [doc/GAPS.md](doc/GAPS.md) | 待考慮事項（設計/應用/實作/商業 21 項 + 建議） |
 
 ## 支援的廣告 SDK（通用規則）
 
