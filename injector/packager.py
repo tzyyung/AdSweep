@@ -5,6 +5,7 @@ import subprocess
 import os
 
 from config import ZIPALIGN, APKSIGNER, DEFAULT_KEYSTORE, DEFAULT_KS_PASS, DEFAULT_KEY_ALIAS, DEFAULT_KEY_PASS
+from manifest_patcher import patch_manifest_in_apk
 
 
 def package_apk(decompiled_dir: str, output_apk: str,
@@ -26,7 +27,10 @@ def package_apk(decompiled_dir: str, output_apk: str,
     if not recompile(decompiled_dir, unsigned_apk):
         return False
 
-    # Step 2: Zipalign with page alignment (-p) for uncompressed .so files
+    # Step 2: Patch binary manifest (extractNativeLibs, etc.)
+    patch_manifest_in_apk(unsigned_apk)
+
+    # Step 3: Zipalign with page alignment (-p) for uncompressed .so files
     print("[*] Aligning APK...")
     cmd = [ZIPALIGN, "-f", "-p", "4", unsigned_apk, aligned_apk]
     result = subprocess.run(cmd, capture_output=True, text=True)

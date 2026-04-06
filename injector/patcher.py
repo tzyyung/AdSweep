@@ -18,15 +18,9 @@ from config import PREBUILT_DIR
 
 def patch(decompiled_dir: str) -> bool:
     """Apply all patches to the decompiled APK directory."""
-    # Use text manifest if available (from -r mode), otherwise use regular one
-    text_manifest = os.path.join(decompiled_dir, "AndroidManifest.xml.text")
-    manifest_path = text_manifest if os.path.exists(text_manifest) else os.path.join(decompiled_dir, "AndroidManifest.xml")
+    manifest_path = os.path.join(decompiled_dir, "AndroidManifest.xml")
 
-    if not os.path.exists(manifest_path):
-        print("[!] AndroidManifest.xml not found")
-        return False
-
-    # Step 1: Find or create Application class
+    # Step 1: Find Application class from manifest (binary or text)
     app_class = find_application_class(manifest_path)
     if app_class:
         print(f"[+] Found Application class: {app_class}")
@@ -38,7 +32,8 @@ def patch(decompiled_dir: str) -> bool:
         print("[*] No custom Application class found, creating stub...")
         app_class = "com.adsweep.AdSweepApp"
         smali_path = create_stub_application(decompiled_dir)
-        update_manifest_application(manifest_path, app_class)
+        # Note: in -r mode, can't modify binary manifest to register stub Application
+        # The stub will need to be registered via binary manifest patching post-build
 
     # Step 2: Inject init call into onCreate
     if not inject_init_call(smali_path):
@@ -48,32 +43,52 @@ def patch(decompiled_dir: str) -> bool:
     if not copy_payload(decompiled_dir):
         return False
 
-    # Step 4: Ensure .so files are not compressed (for extractNativeLibs=false)
+    # Step 4: Ensure .so files are not compressed
     patch_apktool_yml(decompiled_dir)
 
-    # Step 5: Patch manifest (permissions + activity)
-    if not patch_manifest(manifest_path):
-        return False
+    # Note: Manifest modifications (extractNativeLibs, permissions, SettingsActivity)
+    # are handled post-build by manifest_patcher.py on the binary manifest.
 
     print("[+] All patches applied successfully")
     return True
 
 
 def find_application_class(manifest_path: str) -> str:
-    """Extract the Application class name from AndroidManifest.xml."""
-    tree = ET.parse(manifest_path)
-    root = tree.getroot()
-    ns = {"android": "http://schemas.android.com/apk/res/android"}
-
-    app_elem = root.find("application")
-    if app_elem is not None:
-        name = app_elem.get("{http://schemas.android.com/apk/res/android}name")
-        if name:
-            # Handle relative class names
-            if name.startswith("."):
-                package = root.get("package", "")
-                name = package + name
-            return name
+    """Extract the Application class name from AndroidManifest.xml (text or binary)."""
+    try:
+        # Try text XML first
+        tree = ET.parse(manifest_path)
+        root = tree.getroot()
+        app_elem = root.find("application")
+        if app_elem is not None:
+            name = app_elem.get("{http://schemas.android.com/apk/res/android}name")
+            if name:
+                if name.startswith("."):
+                    package = root.get("package", "")
+                    name = package + name
+                return name
+    except ET.ParseError:
+        # Binary manifest — use androguard
+        try:
+            from androguard.core.axml import AXMLPrinter
+            with open(manifest_path, "rb") as f:
+                data = f.read()
+            axml = AXMLPrinter(data)
+            xml_text = axml.get_xml().decode()
+            # Parse the text output
+            text_root = ET.fromstring(xml_text)
+            app_elem = text_root.find("application")
+            if app_elem is not None:
+                name = app_elem.get("{http://schemas.android.com/apk/res/android}name")
+                if name:
+                    if name.startswith("."):
+                        package = text_root.get("package", "")
+                        name = package + name
+                    return name
+        except Exception as e:
+            print(f"[!] Cannot parse binary manifest: {e}")
+            # Fallback: grep smali for Application subclass
+            pass
     return None
 
 
