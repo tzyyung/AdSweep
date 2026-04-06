@@ -407,7 +407,7 @@ public class MainActivity extends Activity {
             // Step 1: Uninstall original
             if (selectedPackageName != null) {
                 mainHandler.post(() -> log("Uninstalling " + selectedPackageName + "..."));
-                execShell("pm uninstall " + selectedPackageName);
+                execShell("pm uninstall --user 0 " + selectedPackageName);
             }
 
             // Step 2: Collect APK files (re-sign splits)
@@ -430,7 +430,7 @@ public class MainActivity extends Activity {
 
             // Step 4: Create install session
             mainHandler.post(() -> log("Creating install session..."));
-            String createResult = execShell("pm install-create -S " + totalSize);
+            String createResult = execShell("pm install-create --user 0 -S " + totalSize);
             // Parse session ID from "Success: created install session [12345]"
             int sessionId = -1;
             if (createResult.contains("[")) {
