@@ -11,7 +11,6 @@
         android:layout_height="wrap_content"
         android:background="#1976D2"
         android:padding="16dp"
-        android:orientation="horizontal"
         android:gravity="center_vertical">
 
         <TextView
@@ -40,104 +39,235 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="12dp">
 
-            <!-- APK Selection Card -->
+            <!-- Step 1: Select App -->
             <LinearLayout
-                android:id="@+id/cardSelectApk"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="#FFFFFF"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_marginBottom="12dp"
-                android:clickable="true"
-                android:focusable="true">
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
 
                 <TextView
+                    android:id="@+id/step1Status"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:text="1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:background="#1976D2" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Select App"
+                        android:textSize="15sp"
+                        android:textColor="#333333"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvStep1Info"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Tap to choose an app"
+                        android:textSize="13sp"
+                        android:textColor="#757575" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnSelect"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="1. Select APK"
-                    android:textColor="#1976D2"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvApkInfo"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/select_apk_hint"
-                    android:textColor="#757575"
-                    android:textSize="14sp" />
+                    android:layout_height="36dp"
+                    android:text="SELECT"
+                    android:textSize="12sp"
+                    android:backgroundTint="#1976D2"
+                    android:textColor="#FFFFFF" />
             </LinearLayout>
 
-            <!-- Scan Results Card -->
+            <!-- Step 2: Backup + Patch (auto) -->
             <LinearLayout
-                android:id="@+id/cardScanResults"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="#FFFFFF"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
 
                 <TextView
+                    android:id="@+id/step2Status"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:text="2"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:background="#9E9E9E" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Backup + Patch"
+                        android:textSize="15sp"
+                        android:textColor="#333333"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvStep2Info"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Waiting..."
+                        android:textSize="13sp"
+                        android:textColor="#757575" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnPatch"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="2. Scan Results"
-                    android:textColor="#1976D2"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvScanResults"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#333333"
-                    android:textSize="13sp"
-                    android:fontFamily="monospace" />
+                    android:layout_height="36dp"
+                    android:text="PATCH"
+                    android:textSize="12sp"
+                    android:backgroundTint="#4CAF50"
+                    android:textColor="#FFFFFF"
+                    android:enabled="false" />
             </LinearLayout>
 
-            <!-- Rules Card -->
+            <!-- Step 3: Uninstall Original -->
             <LinearLayout
-                android:id="@+id/cardRules"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="#FFFFFF"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
 
                 <TextView
+                    android:id="@+id/step3Status"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:text="3"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:background="#9E9E9E" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Uninstall Original"
+                        android:textSize="15sp"
+                        android:textColor="#333333"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvStep3Info"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Waiting..."
+                        android:textSize="13sp"
+                        android:textColor="#757575" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnUninstall"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="3. Rules"
-                    android:textColor="#1976D2"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvRulesInfo"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="#333333"
-                    android:textSize="13sp" />
+                    android:layout_height="36dp"
+                    android:text="UNINSTALL"
+                    android:textSize="12sp"
+                    android:backgroundTint="#FF9800"
+                    android:textColor="#FFFFFF"
+                    android:enabled="false" />
             </LinearLayout>
 
-            <!-- Status/Log Card -->
+            <!-- Step 4: Install Patched -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#FFFFFF"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:id="@+id/step4Status"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:text="4"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:background="#9E9E9E" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Install Patched"
+                        android:textSize="15sp"
+                        android:textColor="#333333"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvStep4Info"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Waiting..."
+                        android:textSize="13sp"
+                        android:textColor="#757575" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnInstall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="INSTALL"
+                    android:textSize="12sp"
+                    android:backgroundTint="#1976D2"
+                    android:textColor="#FFFFFF"
+                    android:enabled="false" />
+            </LinearLayout>
+
+            <!-- Log -->
             <LinearLayout
                 android:id="@+id/cardLog"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="#FFFFFF"
                 android:orientation="vertical"
-                android:padding="20dp"
-                android:layout_marginBottom="12dp"
+                android:padding="16dp"
                 android:visibility="gone">
 
                 <TextView
@@ -145,52 +275,20 @@
                     android:layout_height="wrap_content"
                     android:text="Log"
                     android:textColor="#1976D2"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvLog"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="4dp"
                     android:textColor="#757575"
-                    android:textSize="12sp"
-                    android:fontFamily="monospace"
-                    android:maxLines="20" />
+                    android:textSize="11sp"
+                    android:fontFamily="monospace" />
             </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
-
-    <!-- Bottom Action Bar -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:background="#FFFFFF"
-        android:elevation="8dp">
-
-        <Button
-            android:id="@+id/btnPatch"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:text="@string/patch"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#4CAF50"
-            android:enabled="false"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnInstall"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:text="@string/install"
-            android:textColor="#FFFFFF"
-            android:backgroundTint="#1976D2"
-            android:enabled="false" />
-    </LinearLayout>
 
 </LinearLayout>
