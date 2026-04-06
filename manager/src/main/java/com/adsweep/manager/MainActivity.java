@@ -341,7 +341,10 @@ public class MainActivity extends Activity {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
             session.commit(pi.getIntentSender());
 
-            log("Install session committed. Please confirm installation.");
+            log("Install session committed.");
+            log("If no install dialog appears, this app may require split APKs.");
+            log("Use ADB instead:");
+            log("  adb install patched.apk");
         } catch (Exception e) {
             Toast.makeText(this, "Install error: " + e.getMessage(), Toast.LENGTH_LONG).show();
             log("Install error: " + e.getMessage());
