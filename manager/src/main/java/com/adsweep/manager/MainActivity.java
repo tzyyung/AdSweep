@@ -346,15 +346,16 @@ public class MainActivity extends Activity {
                     mainHandler.post(() -> log("Added " + splits.length + " split APKs"));
                 }
 
-                // Register callback to detect result
-                installer.registerSessionCallback(new PackageInstaller.SessionCallback() {
+                // Register callback on main thread
+                final int sid = sessionId;
+                mainHandler.post(() -> installer.registerSessionCallback(new PackageInstaller.SessionCallback() {
                     @Override public void onCreated(int id) {}
                     @Override public void onBadgingChanged(int id) {}
                     @Override public void onActiveChanged(int id, boolean active) {}
                     @Override public void onProgressChanged(int id, float progress) {}
                     @Override
                     public void onFinished(int id, boolean success) {
-                        if (id == sessionId) {
+                        if (id == sid) {
                             mainHandler.post(() -> {
                                 if (success) {
                                     setStepDone(step4Status);
@@ -373,7 +374,7 @@ public class MainActivity extends Activity {
                             installer.unregisterSessionCallback(this);
                         }
                     }
-                });
+                }));
 
                 // Commit
                 Intent cb = new Intent(this, MainActivity.class);
