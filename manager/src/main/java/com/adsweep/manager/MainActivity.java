@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * AdSweep Manager — Main screen for selecting, scanning, and patching APKs.
@@ -314,24 +315,33 @@ public class MainActivity extends Activity {
         }
 
         try {
-            // Copy to external cache so package installer can access it
-            File externalApk = new File(getExternalCacheDir(), "patched.apk");
+            // Use PackageInstaller API (works on all Android 5+)
+            android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                    new android.content.pm.PackageInstaller.SessionParams(
+                            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+
+            int sessionId = installer.createSession(params);
+            android.content.pm.PackageInstaller.Session session = installer.openSession(sessionId);
+
+            // Write APK to session
             FileInputStream fis = new FileInputStream(patchedApk);
-            FileOutputStream fos = new FileOutputStream(externalApk);
+            OutputStream out = session.openWrite("patched.apk", 0, patchedApk.length());
             byte[] buf = new byte[8192];
             int len;
-            while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
-            fos.close();
+            while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
+            session.fsync(out);
+            out.close();
             fis.close();
 
-            // Bypass StrictMode file URI check
-            android.os.StrictMode.VmPolicy.Builder builder = new android.os.StrictMode.VmPolicy.Builder();
-            android.os.StrictMode.setVmPolicy(builder.build());
+            // Commit with a status callback intent
+            Intent callbackIntent = new Intent(this, MainActivity.class);
+            android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
+                    this, 0, callbackIntent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
+            session.commit(pi.getIntentSender());
 
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(Uri.fromFile(externalApk), "application/vnd.android.package-archive");
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
+            log("Install session committed. Please confirm installation.");
         } catch (Exception e) {
             Toast.makeText(this, "Install error: " + e.getMessage(), Toast.LENGTH_LONG).show();
             log("Install error: " + e.getMessage());
