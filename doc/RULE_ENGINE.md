@@ -633,3 +633,185 @@ graph TD
 | P2 | 版本檢查 | 提醒規則失效 |
 | P2 | returnType 匹配 | 混淆方法精確匹配 |
 | P3 | 分組/標籤/優先順序 | UI 和管理需求 |
+| P1 | 多 App 排除 | 通用規則排除特定 App |
+| P2 | 動態回傳值 | 回傳空 List/Map/mock 物件 |
+| P2 | 延遲 Hook | 動態載入的 class |
+| P2 | 規則熱更新 | 不重啟 App 就能改規則 |
+| P3 | 規則效果統計 | 顯示每條規則攔截次數 |
+| P3 | 規則匯出分享 | 一鍵匯出可提交到規則倉庫的格式 |
+
+### 8. 多 App 規則排除
+
+同一份通用規則裡，某條規則可能對特定 App 造成問題。需要排除機制：
+
+```json
+{
+  "id": "admob-baseadview-load",
+  "className": "com.google.android.gms.ads.BaseAdView",
+  "methodName": "loadAd",
+  "action": "BLOCK_RETURN_VOID",
+  "excludePackages": ["com.some.broken.app", "com.another.app"]
+}
+```
+
+```mermaid
+graph TD
+    A["載入規則"] --> B{"excludePackages 包含目前 App?"}
+    B -->|是| C["跳過此規則"]
+    B -->|否| D["正常安裝 Hook"]
+```
+
+HookManager 在處理每條規則時，比對當前 App 的 package name 是否在排除清單中。
+
+### 9. 動態回傳值
+
+有些方法需要回傳特定型別的物件，不是簡單的 primitive：
+
+| Action | 回傳值 | 用途 |
+|--------|--------|------|
+| `BLOCK_RETURN_EMPTY_LIST` | `Collections.emptyList()` | 回傳空列表 |
+| `BLOCK_RETURN_EMPTY_MAP` | `Collections.emptyMap()` | 回傳空 Map |
+| `BLOCK_RETURN_EMPTY_ARRAY` | `new Object[0]` | 回傳空陣列 |
+| `BLOCK_RETURN_MOCK` | 動態產生的空物件 | 回傳 interface 的空實作 |
+
+`BLOCK_RETURN_MOCK` 最複雜——需要用 `java.lang.reflect.Proxy` 動態產生一個空實作：
+
+```java
+case "BLOCK_RETURN_MOCK":
+    Class<?> returnType = targetMethod.getReturnType();
+    if (returnType.isInterface()) {
+        return Proxy.newProxyInstance(
+            returnType.getClassLoader(),
+            new Class[]{returnType},
+            (proxy, method, args) -> getDefaultValue(method.getReturnType())
+        );
+    }
+    return null;
+```
+
+### 10. 延遲 Hook（Lazy Hook）
+
+某些 class 在 App 啟動時不存在（動態載入、multidex lazy init）。
+目前 `ClassNotFoundException` 會直接跳過，但這些 class 後來可能被載入。
+
+```mermaid
+graph TD
+    A["App 啟動"] --> B["HookManager 載入規則"]
+    B --> C{"ClassLoader.loadClass"}
+    C -->|找到| D["立即 Hook"]
+    C -->|ClassNotFoundException| E["加入待處理清單"]
+    E --> F["定期重試（每 30 秒）"]
+    F --> C
+    F -->|"重試 3 次後放棄"| G["標記為不可用"]
+```
+
+或更精確的做法：Hook `ClassLoader.loadClass` 本身，偵測到目標 class 被載入時自動安裝 Hook。但這又回到了 Hook 高頻方法的問題。
+
+**務實做法：** 提供延遲時間設定。
+
+```json
+{
+  "id": "lazy-loaded-sdk",
+  "className": "com.dynamicload.AdModule",
+  "methodName": "show",
+  "action": "BLOCK_RETURN_VOID",
+  "lazyRetry": {
+    "enabled": true,
+    "intervalMs": 30000,
+    "maxRetries": 3
+  }
+}
+```
+
+### 11. 規則熱更新
+
+目前規則在啟動時載入一次，SettingsActivity 裡修改規則後要重啟 App。
+
+需要支援：
+- **新增 Hook**：runtime 安裝新 Hook（LSPlant 支援）
+- **移除 Hook**：runtime unhook（LSPlant 支援）
+- **修改 Hook**：unhook + 重新 hook
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SettingsActivity
+    participant HookManager
+    participant HookEngine
+
+    User->>SettingsActivity: 關閉某條規則
+    SettingsActivity->>HookManager: disableRule("admob-load")
+    HookManager->>HookEngine: unhook(targetMethod)
+    HookEngine-->>HookManager: success
+    HookManager-->>SettingsActivity: 規則已停用
+    Note over User: 不需要重啟 App
+```
+
+HookManager 需要保存 `targetMethod` 的引用，目前只保存了 `backupMethod`。
+
+### 12. 規則效果統計
+
+每條規則記錄攔截次數和最後攔截時間：
+
+```mermaid
+graph LR
+    A["BlockCallback.handleHook()"] --> B["攔截計數 +1"]
+    B --> C["更新最後攔截時間"]
+    C --> D["SettingsActivity 顯示"]
+```
+
+```java
+public class BlockCallback extends HookCallback {
+    private final AtomicInteger blockCount = new AtomicInteger(0);
+    private volatile long lastBlockTime = 0;
+
+    @Override
+    public Object handleHook(Object[] args) {
+        blockCount.incrementAndGet();
+        lastBlockTime = System.currentTimeMillis();
+        // ...
+    }
+}
+```
+
+SettingsActivity 的規則清單顯示：
+
+```
+AdMob BaseAdView.loadAd          [ON]   攔截 47 次
+AppLovin AppLovinSdk.initialize  [ON]   攔截 3 次
+Custom MyClass.checkLicense      [ON]   攔截 0 次  ← 可能沒用或還沒觸發
+```
+
+攔截 0 次的規則可以提示用戶：可能方法名不對、class 不存在、或還沒觸發。
+
+### 13. 規則匯出分享
+
+用戶透過 Layer 3 回報或手動新增的規則，要能匯出為可直接提交到規則倉庫的格式：
+
+```mermaid
+graph TD
+    A["SettingsActivity<br>Export Rules"] --> B{"匯出範圍"}
+    B -->|"只匯出 App 專屬規則"| C["rules_app.json"]
+    B -->|"匯出所有生效規則"| D["rules_all.json"]
+    B -->|"匯出 Layer 3 回報"| E["rules_discovered.json"]
+    C --> F["複製到剪貼簿 / 分享 Intent"]
+    D --> F
+    E --> F
+    F --> G["用戶貼到 GitHub Issue"]
+    G --> H["維護者審核 → 合併到倉庫"]
+```
+
+匯出格式應自動附帶 metadata：
+
+```json
+{
+  "exportedFrom": "AdSweep 1.0.0",
+  "exportedAt": "2026-04-06T14:30:00",
+  "packageName": "com.realbyteapps.moneymanagerfree",
+  "appVersion": "4.10.8",
+  "androidApi": 34,
+  "rules": [ ... ]
+}
+```
+
+這樣維護者能知道規則是在什麼環境下產出的。
