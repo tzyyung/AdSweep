@@ -29,6 +29,16 @@
 
         <activity android:name=".AppListActivity" />
 
+        <receiver android:name=".CommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.adsweep.manager.CMD_SELECT" />
+                <action android:name="com.adsweep.manager.CMD_PATCH" />
+                <action android:name="com.adsweep.manager.CMD_INSTALL" />
+                <action android:name="com.adsweep.manager.CMD_STATUS" />
+            </intent-filter>
+        </receiver>
+
         <receiver android:name=".InstallReceiver"
             android:exported="false">
             <intent-filter>
