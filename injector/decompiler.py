@@ -8,7 +8,11 @@ from config import APKTOOL
 
 
 def decompile(apk_path: str, output_dir: str) -> bool:
-    """Decompile an APK using apktool (full mode with resources)."""
+    """Decompile an APK using apktool (full mode).
+
+    Note: Full decompile may produce @null artifacts in resource XML.
+    The patcher's fix_decompile_artifacts() handles these automatically.
+    """
     print(f"[*] Decompiling {apk_path}...")
     cmd = [APKTOOL, "d", apk_path, "-o", output_dir, "-f"]
     result = subprocess.run(cmd, capture_output=True, text=True)

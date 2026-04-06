@@ -257,27 +257,30 @@ def fix_decompile_artifacts(decompiled_dir: str):
                 continue
 
             original = content
-            # Replace any <bitmap ... android:src="@null" ... /> with transparent color
-            content = re.sub(
-                r'<bitmap\s[^>]*android:src="@null"[^>]*/\s*>',
-                '<color android:color="@android:color/transparent" />',
-                content
-            )
-            # Replace any <nine-patch ... android:src="@null" ... /> with transparent color
-            content = re.sub(
-                r'<nine-patch\s[^>]*android:src="@null"[^>]*/\s*>',
-                '<color android:color="@android:color/transparent" />',
-                content
-            )
+            SHAPE_TRANSPARENT = '<shape android:shape="rectangle"><solid android:color="@android:color/transparent" /><size android:width="1dp" android:height="1dp" /></shape>'
+            COLOR_TRANSPARENT = '<color xmlns:android="http://schemas.android.com/apk/res/android" android:color="@android:color/transparent" />'
+
+            # If the entire file is a single <bitmap ... @null ...>, replace whole file
+            if re.match(r'^\s*<\?xml[^?]*\?>\s*\n?\s*<bitmap\s[^>]*android:src="@null"', content):
+                content = '<?xml version="1.0" encoding="utf-8"?>\n' + COLOR_TRANSPARENT + '\n'
+            else:
+                # Replace <bitmap ... android:src="@null" ... /> inside containers with shape
+                content = re.sub(
+                    r'<bitmap\s[^>]*android:src="@null"[^>]*/\s*>',
+                    SHAPE_TRANSPARENT,
+                    content
+                )
+                # Replace <nine-patch ... android:src="@null" ... /> with shape
+                content = re.sub(
+                    r'<nine-patch\s[^>]*android:src="@null"[^>]*/\s*>',
+                    SHAPE_TRANSPARENT,
+                    content
+                )
+
             # android:drawable="@null" → android:drawable="@android:color/transparent"
             content = content.replace(
                 'android:drawable="@null"',
                 'android:drawable="@android:color/transparent"'
-            )
-            # android:src="@null" in standalone bitmap tags (top-level)
-            content = content.replace(
-                'android:src="@null"',
-                'android:src="@android:color/transparent"'
             )
 
             if content != original:
