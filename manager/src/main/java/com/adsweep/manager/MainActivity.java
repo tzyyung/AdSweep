@@ -103,12 +103,9 @@ public class MainActivity extends Activity {
                 copyAndScanApk(uri);
             }
         } else if (requestCode == REQUEST_UNINSTALL) {
-            // After uninstall, continue with installation
-            if (pendingInstallSession) {
-                pendingInstallSession = false;
-                log("Uninstall complete. Installing patched version...");
-                installPatched();
-            }
+            pendingInstallSession = false;
+            log("Uninstall done. Installing patched version...");
+            doInstall();
             return;
         } else if (requestCode == REQUEST_INSTALLED_APP) {
             String apkPath = data.getStringExtra(AppListActivity.RESULT_APK_PATH);
@@ -326,31 +323,31 @@ public class MainActivity extends Activity {
             return;
         }
 
+        // Check if original app needs to be uninstalled first (different signature)
+        if (selectedPackageName != null) {
+            try {
+                getPackageManager().getPackageInfo(selectedPackageName, 0);
+                // App is installed — uninstall first
+                log("Uninstalling original app...");
+                pendingInstallSession = true;
+                Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
+                        Uri.parse("package:" + selectedPackageName));
+                startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
+                return;
+            } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+                // Not installed, continue
+            }
+        }
+
+        doInstall();
+    }
+
+    private void doInstall() {
         log("Installing...");
         btnInstall.setEnabled(false);
 
         new Thread(() -> {
             try {
-                // First uninstall existing app (different signature)
-                if (selectedPackageName != null) {
-                    try {
-                        getPackageManager().getPackageInfo(selectedPackageName, 0);
-                        // App is installed — need to uninstall first
-                        mainHandler.post(() -> {
-                            log("Please uninstall original app first...");
-                            Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
-                                    Uri.parse("package:" + selectedPackageName));
-                            startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
-                        });
-                        // Wait for uninstall to complete
-                        // We'll continue installation in onActivityResult
-                        pendingInstallSession = true;
-                        return;
-                    } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                        // Not installed, continue with install
-                    }
-                }
-
                 android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
                 android.content.pm.PackageInstaller.SessionParams params =
                         new android.content.pm.PackageInstaller.SessionParams(
