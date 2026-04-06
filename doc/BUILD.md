@@ -108,6 +108,42 @@ python inject.py --apk target.apk \
 python inject.py --apk target.apk --keep-work --work-dir ./work
 ```
 
+### 自動下載規則
+
+```bash
+# 從社群規則庫自動下載（最推薦）
+python inject.py --apk target.apk --rules-url auto
+
+# 使用自訂規則庫
+python inject.py --apk target.apk \
+  --rules-url https://raw.githubusercontent.com/someone/adsweep-rules/main
+```
+
+### Discover 模式
+
+```bash
+# 1. 注入 discover 版本（只觀察不攔截）
+python inject.py --apk target.apk --discover
+
+# 2. 安裝，正常使用 App 幾分鐘
+
+# 3. 拉 log（需 root 或 debug build）
+adb shell cat /data/data/<package>/files/adsweep/discovery_log.txt > log.txt
+
+# 4. 分析產出規則
+python discover_analyzer.py log.txt -o rules.json
+
+# 5. 用發現的規則注入正式版
+python inject.py --apk target.apk --rules rules.json
+```
+
+### 更新域名清單
+
+```bash
+python domain_converter.py ../core/src/main/assets/adsweep_domains.txt
+# 下載 EasyList + EasyPrivacy + AdGuard → 合併去重 → ~99K 域名
+```
+
 ### 安裝
 
 ```bash

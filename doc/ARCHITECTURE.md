@@ -208,6 +208,67 @@ graph TD
     style J fill:#4CAF50,color:#fff
 ```
 
+## 規則引擎
+
+```mermaid
+graph TD
+    A["方法被呼叫"] --> B["RuleBasedCallback"]
+    B --> C["HookContext（強型別）"]
+    C --> D["HookRule.apply()"]
+    D --> E{"RuleCondition.evaluate()"}
+    E -->|"ALWAYS（無條件）"| F["BlockAction → 回傳固定值"]
+    E -->|"URL_MATCHES"| G["DomainMatcher → 比對 99K 域名"]
+    G -->|符合| F
+    G -->|不符合| H["PassThroughAction → callOriginal"]
+    E -->|"ARG_CONTAINS / REGEX"| I["字串比對"]
+    I -->|符合| F
+    I -->|不符合| H
+```
+
+借鑑 Easy Rules 的設計模式（RuleCondition / RuleAction / HookRule），但簡化為 AdSweep 的 1-to-1 Hook 模型。
+
+詳見 [RULE_ENGINE.md](RULE_ENGINE.md)
+
+## Discover 模式
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant inject.py
+    participant App
+    participant analyzer
+
+    User->>inject.py: --apk app.apk --discover
+    inject.py->>inject.py: 掃描 → 50 suggested rules → MONITOR_ONLY
+    inject.py-->>User: discover APK
+
+    User->>App: 安裝，正常使用幾分鐘
+    App->>App: MonitorAction 記錄所有方法呼叫到 discovery_log.txt
+
+    User->>analyzer: discover_analyzer.py discovery_log.txt
+    analyzer->>analyzer: 分析頻率 + 關鍵字 + call stack
+    analyzer-->>User: rules_discovered.json (已驗證的規則)
+
+    User->>inject.py: --apk app.apk --rules rules_discovered.json
+    inject.py-->>User: 正式版 patched APK
+```
+
+## 規則倉庫
+
+```mermaid
+graph LR
+    A["inject.py --rules-url auto"] --> B["下載 index.json"]
+    B --> C["查找 package name"]
+    C --> D["下載 rules.json"]
+    D --> E["注入到 APK"]
+
+    F["adsweep-rules repo"] --> B
+    F --> G["社群貢獻 PR"]
+    G --> F
+```
+
+倉庫：[tzyyung/adsweep-rules](https://github.com/tzyyung/adsweep-rules)
+
 ## 已知限制
 
 | 限制 | 說明 | 解決方向 |

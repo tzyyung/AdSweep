@@ -175,19 +175,23 @@ graph TB
 gantt
     title AdSweep 開發階段
     dateFormat YYYY-MM-DD
-    section Phase 1
+    section Phase 1-5
         Hook 引擎 + 注入腳本     :done, p1, 2026-04-06, 1d
-    section Phase 2
         規則系統 + 多種 action    :done, p2, after p1, 1d
-    section Phase 3
         掃描自動轉規則            :done, p3, after p2, 1d
-    section Phase 4
-        Layer 3 浮動回報 UI       :done, p4, after p3, 1d
-    section Phase 5
-        設定 Activity             :done, p5, after p4, 1d
-    section Phase 6
-        Layer 3 重設計            :done, p6a, after p5, 1d
-        Binary Manifest Patch     :done, p6b, after p5, 1d
-        錯誤處理                  :done, p6c, after p5, 1d
-        更多 App 測試             :active, p6d, after p6a, 1d
+        Layer 3 + Settings UI     :done, p4, after p3, 1d
+    section Phase 6 加固
+        Layer 3 重設計            :done, p6a, after p4, 1d
+        Binary Manifest Patch     :done, p6b, after p4, 1d
+        錯誤處理                  :done, p6c, after p4, 1d
+    section 規則引擎
+        條件式攔截架構            :done, re1, after p6a, 1d
+        域名清單整合 99K          :done, re2, after re1, 1d
+    section 自動化
+        Discover 模式             :done, d1, after re2, 1d
+        規則倉庫 + auto download  :done, d2, after d1, 1d
+    section 未來
+        Android Manager App       :f1, after d2, 7d
+        AI 分析引擎               :f2, after d2, 14d
+        更多 App 規則             :f3, after d2, 30d
 ```
