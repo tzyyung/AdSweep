@@ -46,7 +46,10 @@ def patch(decompiled_dir: str) -> bool:
     if not copy_payload(decompiled_dir):
         return False
 
-    # Step 4: Patch manifest (permissions + activity)
+    # Step 4: Fix broken resources from apktool decompilation
+    fix_decompile_artifacts(decompiled_dir)
+
+    # Step 5: Patch manifest (permissions + activity)
     if not patch_manifest(manifest_path):
         return False
 
@@ -237,6 +240,44 @@ def inject_dex_as_smali(decompiled_dir: str, dex_path: str) -> bool:
     smali_count = len(glob.glob(os.path.join(target_smali_dir, "**/*.smali"), recursive=True))
     print(f"[+] Converted DEX to {smali_count} smali files in {os.path.basename(target_smali_dir)}")
     return True
+
+
+def fix_decompile_artifacts(decompiled_dir: str):
+    """Fix common apktool decompilation artifacts that cause runtime crashes."""
+    fixed = 0
+
+    # Fix @null references in bitmap/drawable XML files
+    # apktool sometimes decompiles resource references as @null which crash at inflate time
+    for xml_file in glob.glob(os.path.join(decompiled_dir, "res", "drawable*", "*.xml")):
+        try:
+            with open(xml_file, "r") as f:
+                content = f.read()
+
+            if "@null" not in content:
+                continue
+
+            original = content
+            # <bitmap android:src="@null" /> → <color android:color="@android:color/transparent" />
+            content = re.sub(
+                r'<bitmap\s+android:src="@null"\s*/>',
+                '<color android:color="@android:color/transparent" />',
+                content
+            )
+            # android:drawable="@null" → android:drawable="@android:color/transparent"
+            content = content.replace(
+                'android:drawable="@null"',
+                'android:drawable="@android:color/transparent"'
+            )
+
+            if content != original:
+                with open(xml_file, "w") as f:
+                    f.write(content)
+                fixed += 1
+        except Exception:
+            pass
+
+    if fixed > 0:
+        print(f"[+] Fixed @null references in {fixed} drawable XML files")
 
 
 def patch_manifest(manifest_path: str) -> bool:
