@@ -14,12 +14,12 @@
     {
       "id": "mm-globals-premium",
       "className": "com.realbyte.money.config.Globals",
-      "methodName": "e",
+      "methodName": "k",
       "action": "BLOCK_RETURN_TRUE",
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Premium Check",
-      "notes": "Returns true so Intro initialization runs normally"
+      "notes": "k() is isPremium check; return true so e()=!k()=false, skipping purchase flow"
     },
     {
       "id": "mm-globals-check",
@@ -62,14 +62,14 @@
       "notes": "Block remote API requests"
     },
     {
-      "id": "mm-gdpr-consent",
+      "id": "mm-gdpr-consent-check",
       "className": "com.realbyte.money.ad.gdpr.GDPRConsent",
-      "methodName": "n",
-      "action": "BLOCK_RETURN_VOID",
+      "methodName": "l",
+      "action": "BLOCK_RETURN_TRUE",
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "GDPR Consent",
-      "notes": "Block GDPR consent dialog that covers the screen"
+      "notes": "l() checks if consent obtained; return true to skip consent dialog entirely"
     },
     {
       "id": "mm-ump-load-consent",
