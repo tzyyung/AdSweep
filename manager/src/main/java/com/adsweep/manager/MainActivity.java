@@ -324,42 +324,42 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // Check if original app needs to be uninstalled first (different signature)
+        // Cache split APK paths before anything changes
         if (selectedPackageName != null) {
             try {
-                getPackageManager().getPackageInfo(selectedPackageName, 0);
-                // App is installed — cache split paths before uninstall
-                try {
-                    android.content.pm.ApplicationInfo ai = getPackageManager()
-                            .getApplicationInfo(selectedPackageName, 0);
-                    cachedSplitPaths = ai.splitSourceDirs;
-                    // Copy splits to cache (originals will be deleted on uninstall)
-                    if (cachedSplitPaths != null) {
-                        for (int i = 0; i < cachedSplitPaths.length; i++) {
-                            File src = new File(cachedSplitPaths[i]);
-                            File dst = new File(getCacheDir(), "split_" + src.getName());
-                            FileInputStream fis = new FileInputStream(src);
-                            FileOutputStream fos = new FileOutputStream(dst);
-                            byte[] buf = new byte[8192];
-                            int len;
-                            while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
-                            fos.close();
-                            fis.close();
-                            cachedSplitPaths[i] = dst.getAbsolutePath();
-                        }
-                        log("Cached " + cachedSplitPaths.length + " split APKs");
+                android.content.pm.ApplicationInfo ai = getPackageManager()
+                        .getApplicationInfo(selectedPackageName, 0);
+                cachedSplitPaths = ai.splitSourceDirs;
+                if (cachedSplitPaths != null) {
+                    for (int i = 0; i < cachedSplitPaths.length; i++) {
+                        File src = new File(cachedSplitPaths[i]);
+                        File dst = new File(getCacheDir(), "split_" + src.getName());
+                        FileInputStream fis = new FileInputStream(src);
+                        FileOutputStream fos = new FileOutputStream(dst);
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = fis.read(buf)) > 0) fos.write(buf, 0, len);
+                        fos.close();
+                        fis.close();
+                        cachedSplitPaths[i] = dst.getAbsolutePath();
                     }
-                } catch (Exception e) {
-                    cachedSplitPaths = null;
+                    log("Cached " + cachedSplitPaths.length + " split APKs");
                 }
-                log("Uninstalling original app...");
-                pendingInstallSession = true;
+            } catch (Exception e) {
+                cachedSplitPaths = null;
+            }
+
+            // Uninstall original first (required: different signature)
+            try {
+                getPackageManager().getPackageInfo(selectedPackageName, 0);
+                log("Please uninstall the original app first.");
+                log("After uninstalling, tap INSTALL again.");
                 Intent uninstallIntent = new Intent(Intent.ACTION_DELETE,
                         Uri.parse("package:" + selectedPackageName));
-                startActivityForResult(uninstallIntent, REQUEST_UNINSTALL);
+                startActivity(uninstallIntent);
                 return;
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                // Not installed, continue
+                // Already uninstalled, continue
             }
         }
 
