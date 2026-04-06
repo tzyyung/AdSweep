@@ -366,3 +366,270 @@ graph LR
 ```
 
 `HookManager` 根據有無 `condition` 選擇使用 `BlockCallback` 或 `ConditionalCallback`。
+
+## 已知問題與待改進
+
+### 1. 缺少 MONITOR_ONLY action
+
+`--discover` 模式需要一個只記錄不攔截的 action：
+
+```mermaid
+graph LR
+    A["方法被呼叫"] --> B["記錄 class + method + args"]
+    B --> C["callOriginal（不攔截）"]
+    C --> D["記錄回傳值"]
+    D --> E["寫入 discovery_log.json"]
+```
+
+```json
+{
+  "id": "discover-okhttp",
+  "className": "okhttp3.OkHttpClient",
+  "methodName": "newCall",
+  "action": "MONITOR_ONLY",
+  "enabled": true
+}
+```
+
+用途：注入後讓用戶正常使用 App，自動記錄所有被呼叫的方法，事後分析哪些是廣告。
+
+### 2. 缺少 CALL_AND_MODIFY action
+
+目前 `BLOCK_RETURN_TRUE` 完全不呼叫原始方法。有些方法有重要的副作用（寫資料庫、更新狀態），需要讓它跑完再修改回傳值：
+
+```mermaid
+graph TD
+    A["BLOCK_RETURN_TRUE（目前）"] --> B["不呼叫原始方法"]
+    B --> C["直接回傳 true"]
+    C --> D["副作用被跳過 ⚠️"]
+
+    E["CALL_AND_MODIFY（需要）"] --> F["呼叫原始方法"]
+    F --> G["丟棄原始回傳值"]
+    G --> H["回傳 true"]
+    H --> I["副作用保留 ✓"]
+```
+
+```json
+{
+  "id": "mm-premium-safe",
+  "className": "com.realbyte.money.config.Globals",
+  "methodName": "k",
+  "action": "CALL_AND_RETURN_TRUE",
+  "notes": "呼叫原始方法保留副作用，但強制回傳 true"
+}
+```
+
+需要新增的 action：
+
+| Action | 行為 |
+|--------|------|
+| `CALL_AND_RETURN_TRUE` | 呼叫原始 → 回傳 true |
+| `CALL_AND_RETURN_FALSE` | 呼叫原始 → 回傳 false |
+| `CALL_AND_RETURN_NULL` | 呼叫原始 → 回傳 null |
+| `CALL_AND_LOG` | 同 MONITOR_ONLY |
+
+### 3. 方法重載匹配不精確
+
+混淆後的方法名很短（`a`、`b`、`c`），同一個 class 可能有多個同名方法：
+
+```java
+class Globals {
+    static boolean a(Context ctx) { ... }  // 方法 1
+    static void a(Context ctx, int i) { ... }  // 方法 2
+    static String a() { ... }  // 方法 3
+}
+```
+
+目前省略 `paramTypes` 時匹配第一個，容易 Hook 錯。
+
+**改進方案：**
+
+```mermaid
+graph TD
+    A{paramTypes 指定?} -->|是| B["精確匹配"]
+    A -->|否| C{methodName 長度}
+    C -->|">3 字元（未混淆）"| D["匹配第一個（現有行為）"]
+    C -->|"≤3 字元（可能混淆）"| E["警告 + 要求指定 paramTypes"]
+```
+
+或加入 `returnType` 欄位做更精確的匹配：
+
+```json
+{
+  "className": "com.example.Globals",
+  "methodName": "a",
+  "paramTypes": ["android.content.Context"],
+  "returnType": "boolean",
+  "action": "BLOCK_RETURN_TRUE"
+}
+```
+
+### 4. 規則依賴關係
+
+Money Manager 的簽名檢查繞過（`Main.C2`）是必要前提——沒有它 App 會自己關閉。但目前沒辦法標記這個關係。
+
+```mermaid
+graph TD
+    A["mm-signature-check<br>Main.C2 → FALSE"] -->|必要前提| B["mm-globals-premium<br>Globals.k → TRUE"]
+    A -->|必要前提| C["mm-globals-check<br>Globals.j → FALSE"]
+    A -->|必要前提| D["所有其他規則"]
+
+    style A fill:#f44336,color:#fff
+```
+
+**改進方案：**
+
+```json
+{
+  "id": "mm-globals-premium",
+  "depends": ["mm-signature-check"],
+  "className": "com.realbyte.money.config.Globals",
+  "methodName": "k",
+  "action": "BLOCK_RETURN_TRUE"
+}
+```
+
+`depends` 陣列：如果依賴的規則 Hook 失敗，這條也自動跳過（避免 App 異常）。
+
+### 5. 版本相容性檢查
+
+App 更新後混淆 mapping 變化，`C2` 可能變成 `D3`，規則就失效了。
+
+```mermaid
+graph TD
+    A["App v4.10.8"] --> B["Main.C2 = 簽名檢查"]
+    C["App v4.11.0（更新）"] --> D["Main.C2 不存在了"]
+    D --> E["規則失效 → Hook 失敗"]
+    E --> F["但 depends 保護：相關規則全跳過"]
+    F --> G["App 正常運作（只是廣告沒擋住）"]
+```
+
+**改進方案：**
+
+```json
+{
+  "id": "mm-signature-check",
+  "className": "com.realbyte.money.ui.main.Main",
+  "methodName": "C2",
+  "appVersions": {
+    "min": "4.10.0",
+    "max": "4.10.99",
+    "tested": ["4.10.8"]
+  }
+}
+```
+
+inject.py 在注入時讀取 APK 版本號，比對 `appVersions`，版本不匹配時警告用戶。
+
+### 6. Wildcard 規則
+
+有時需要 noop 整個 class 的所有方法（例如 `RbAnalyticAgent` 的所有追蹤方法）：
+
+```json
+{
+  "id": "mm-analytics-all",
+  "className": "com.realbyte.money.utils.log_analytics.RbAnalyticAgent",
+  "methodName": "*",
+  "action": "BLOCK_RETURN_VOID"
+}
+```
+
+`*` 表示 Hook 該 class 的**所有 public 方法**。
+
+也可以支援前綴匹配：
+
+```json
+{
+  "methodName": "load*",
+  "notes": "匹配 loadAd, loadBanner, loadInterstitial 等"
+}
+```
+
+**實作方式：**
+
+```mermaid
+graph TD
+    A{methodName 包含 *?} -->|否| B["精確匹配（現有）"]
+    A -->|"*"| C["Hook 所有 public 方法"]
+    A -->|"load*"| D["Hook 名稱以 load 開頭的方法"]
+    C --> E["遍歷 getDeclaredMethods()"]
+    D --> E
+    E --> F["逐一安裝 Hook"]
+```
+
+### 7. 規則分組與標籤
+
+目前用 `sdkName` 做簡單分組，不夠結構化。
+
+```json
+{
+  "id": "mm-signature-check",
+  "tags": ["security", "required", "signature"],
+  "category": "bypass",
+  "priority": 100
+}
+```
+
+| 欄位 | 用途 |
+|------|------|
+| `tags` | 多標籤，方便搜尋過濾 |
+| `category` | 分類：`ad`、`tracking`、`bypass`、`privacy`、`network` |
+| `priority` | 優先順序，數字越大越先 Hook（確保依賴先安裝） |
+
+## 完整規則格式（未來）
+
+```json
+{
+  "id": "unique-id",
+  "className": "com.example.Class",
+  "methodName": "method",
+  "paramTypes": ["android.content.Context"],
+  "returnType": "boolean",
+
+  "action": "BLOCK_RETURN_TRUE",
+  "condition": {
+    "type": "URL_MATCHES",
+    "argIndex": 1,
+    "extract": "url",
+    "source": "adguard_domains.txt"
+  },
+  "elseAction": "PASS_THROUGH",
+
+  "enabled": true,
+  "source": "BUILTIN",
+  "category": "ad",
+  "tags": ["admob", "banner"],
+  "priority": 50,
+  "depends": ["other-rule-id"],
+  "appVersions": {
+    "min": "4.10.0",
+    "max": "4.10.99",
+    "tested": ["4.10.8"]
+  },
+
+  "sdkName": "AdMob",
+  "notes": "Description"
+}
+```
+
+## 改進優先順序
+
+```mermaid
+graph TD
+    A["P0: MONITOR_ONLY<br>（--discover 的前提）"] --> B["P0: Wildcard 規則<br>（大幅減少規則數量）"]
+    B --> C["P1: CALL_AND_MODIFY<br>（更安全的攔截方式）"]
+    C --> D["P1: 規則依賴<br>（避免依賴缺失導致異常）"]
+    D --> E["P2: 版本檢查<br>（提醒規則失效）"]
+    E --> F["P2: returnType 匹配<br>（混淆方法精確匹配）"]
+    F --> G["P3: 分組/標籤/優先順序<br>（UI 和管理用）"]
+```
+
+| 優先順序 | 項目 | 原因 |
+|---------|------|------|
+| P0 | MONITOR_ONLY | `--discover` 的基礎 |
+| P0 | Wildcard `*` | 一條規則取代十幾條 |
+| P1 | CALL_AND_MODIFY | 更安全，減少副作用風險 |
+| P1 | 規則依賴 depends | 避免依賴缺失造成 App 異常 |
+| P2 | 版本檢查 | 提醒規則失效 |
+| P2 | returnType 匹配 | 混淆方法精確匹配 |
+| P3 | 分組/標籤/優先順序 | UI 和管理需求 |
