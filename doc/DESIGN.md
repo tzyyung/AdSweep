@@ -123,6 +123,59 @@ graph TD
     style F fill:#4CAF50,color:#fff
 ```
 
+## On-Device Patching 設計演進
+
+### DexPatcher 演進
+
+```mermaid
+graph TD
+    A["V1: dexlib2 DexPool"] -->|"重寫整個 DEX"| B["debug_info string index 損壞"]
+    B --> C["dexdump 驗證失敗"]
+
+    D["V2: DexPool + strip debug info"] -->|"所有 method"| E["Android 上 OOM（200MB heap）"]
+    E --> F["10726 classes × ImmutableMethod 太大"]
+
+    G["V3: baksmali → patch smali → smali ✓"] -->|"文字處理"| H["記憶體友好"]
+    H --> I["dexdump 驗證通過"]
+    I --> J["Android 上正常運作"]
+
+    style C fill:#f44336,color:#fff
+    style F fill:#f44336,color:#fff
+    style J fill:#4CAF50,color:#fff
+```
+
+**關鍵教訓：** dexlib2 DexPool 在 intern 大量 class 時會損壞 debug info 的 string index，且在 Android 有限的 heap 上 OOM。baksmali/smali 文字流程雖然慢（~50 秒 vs ~15 秒），但穩定且記憶體友好。
+
+### ZIP STORED 問題
+
+```mermaid
+graph TD
+    A["Android 11+ 要求"] --> B["resources.arsc 必須 STORED + 4-byte aligned"]
+    
+    C["java.util.zip.ZipOutputStream"] -->|"Android 實作忽略 STORED"| D["全部變 DEFLATED"]
+    D --> E["安裝失敗 -124"]
+    
+    F["Apache Commons Compress"] -->|"正確支援 STORED"| G["resources.arsc STORED ✓"]
+    G --> H["ApkSigner setAlignmentPreserved=false"]
+    H --> I["自動 4-byte alignment ✓"]
+    I --> J["安裝成功"]
+    
+    style E fill:#f44336,color:#fff
+    style J fill:#4CAF50,color:#fff
+```
+
+### PatchEngine 記憶體優化
+
+```mermaid
+graph LR
+    A["V1: Map<String, byte[]>"] -->|"所有 DEX 同時在記憶體"| B["OOM（50MB+ APK）"]
+    C["V2: Map<String, File>"] -->|"DEX 存在磁碟"| D["串流寫入 ZIP"]
+    D --> E["記憶體使用 < 50MB ✓"]
+
+    style B fill:#f44336,color:#fff
+    style E fill:#4CAF50,color:#fff
+```
+
 ## 效能考量
 
 ```mermaid
@@ -190,8 +243,11 @@ gantt
     section 自動化
         Discover 模式             :done, d1, after re2, 1d
         規則倉庫 + auto download  :done, d2, after d1, 1d
+    section Manager App
+        Manager 基礎架構          :done, m1, after d2, 1d
+        CommandReceiver broadcast :done, m2, after m1, 1d
+        On-device PATCH 完整流程  :done, m3, after m2, 1d
     section 未來
-        Android Manager App       :f1, after d2, 7d
-        AI 分析引擎               :f2, after d2, 14d
-        更多 App 規則             :f3, after d2, 30d
+        AI 分析引擎               :f2, after m3, 14d
+        更多 App 規則             :f3, after m3, 30d
 ```

@@ -4,6 +4,7 @@
 
 ## 特點
 
+- **On-Device Patching** — Manager App 在手機上完成 SELECT → PATCH → INSTALL 全流程
 - **一條指令注入** — `python inject.py --apk target.apk --rules-url auto`
 - **自動下載規則** — 從社群規則倉庫自動匹配 App 專屬規則
 - **99,000+ 域名攔截** — 整合 EasyList + EasyPrivacy + AdGuard 域名清單
@@ -17,6 +18,26 @@
 
 ## 快速開始
 
+### Manager App（On-Device，推薦）
+
+```bash
+# 建置並安裝 Manager
+./gradlew :manager:assembleDebug
+adb install -r manager/build/outputs/apk/debug/manager-debug.apk
+
+# 啟動 Manager
+adb shell am start -n com.adsweep.manager/.MainActivity
+
+# 完整流程（N 是 component 參數，Android 14+ 必須）
+N="-n com.adsweep.manager/.CommandReceiver"
+adb shell am broadcast -a com.adsweep.manager.CMD_SELECT $N --es package com.example.app
+adb shell am broadcast -a com.adsweep.manager.CMD_PATCH $N       # 約 50-90 秒
+adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL $N   # 確認解除安裝
+adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL $N     # 確認安裝
+```
+
+### Python Injector（PC 端）
+
 ```bash
 cd injector
 
@@ -28,13 +49,6 @@ python inject.py --apk target.apk --rules rules/money_manager.json
 
 # 發現模式：自動分析 App 的廣告行為
 python inject.py --apk target.apk --discover
-
-# 完整參數
-python inject.py --apk target.apk \
-  --output patched.apk \
-  --rules-url auto \
-  --keystore my.keystore \
-  --ks-pass mypass
 ```
 
 ## 使用流程
@@ -67,6 +81,12 @@ graph TB
         F --> G[zipalign + 簽名]
     end
 
+    subgraph ManagerApp["Manager App（On-Device）"]
+        MA1["CommandReceiver<br>adb broadcast"] --> MA2["SELECT: 提取 APK"]
+        MA2 --> MA3["PATCH: baksmali/smali<br>+ commons-compress<br>+ ApkSigner"]
+        MA3 --> MA4["UNINSTALL → INSTALL"]
+    end
+
     subgraph Core["AdSweep Core（注入到 App）"]
         H[AdSweep.init] --> I[HookManager]
         I --> I1["規則引擎<br>RuleCondition → RuleAction"]
@@ -86,6 +106,7 @@ graph TB
 
     A1 -->|下載| R1
     G -->|patched APK| Core
+    MA4 -->|patched APK| Core
 ```
 
 ## 攔截層級
@@ -153,6 +174,8 @@ AdMob, AppLovin, Facebook Audience Network, IronSource, Unity Ads, Vungle, AdCol
 - `--rules-url auto` 自動下載規則驗證通過
 - `--discover` 模式自動發現 2 個廣告方法
 - Android 14 (API 34) 模擬器驗證，零 crash
+- **Manager App on-device patch**: SELECT → PATCH → UNINSTALL → INSTALL 全流程驗證通過
+- LSPlant hook 引擎在 patched APK 中成功初始化
 
 ## 系統需求
 

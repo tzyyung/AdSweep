@@ -83,7 +83,7 @@ public class PatchEngine {
 
         // Step 2: Find which DEX contains the Application class and patch it
         progress("Patching DEX bytecode...");
-        Map<String, byte[]> patchedDexes = patchDexFiles(inputApk, appClass, workDir);
+        Map<String, File> patchedDexes = patchDexFiles(inputApk, appClass, workDir);
         if (patchedDexes == null) {
             callback.onError("Failed to patch DEX");
             return;
@@ -135,35 +135,39 @@ public class PatchEngine {
 
     // --- Patch DEX files ---
 
-    private Map<String, byte[]> patchDexFiles(File apkFile, String appClass, File workDir) throws Exception {
-        Map<String, byte[]> result = new HashMap<>();
+    /**
+     * Patch DEX files: extracts one at a time, patches the one containing the app class,
+     * then writes patched files to workDir. Returns a map of entryName → File.
+     * Uses file-based approach to avoid OOM from loading all DEXes into memory.
+     */
+    private Map<String, File> patchDexFiles(File apkFile, String appClass, File workDir) throws Exception {
+        Map<String, File> result = new LinkedHashMap<>();
         boolean patched = false;
+        int dexCount = 0;
 
         try (ZipFile zip = new ZipFile(apkFile)) {
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 if (!entry.getName().matches("classes\\d*\\.dex")) continue;
+                dexCount++;
 
-                // Extract DEX to temp file
                 File tempDex = new File(workDir, entry.getName());
                 extractEntry(zip, entry, tempDex);
 
                 if (!patched) {
-                    // Try to patch this DEX
                     File patchedDex = new File(workDir, entry.getName() + ".patched");
                     if (DexPatcher.patchDex(tempDex, appClass, patchedDex)) {
-                        result.put(entry.getName(), readBytes(patchedDex));
+                        tempDex.delete();
+                        result.put(entry.getName(), patchedDex);
                         patched = true;
                         progress("Patched " + entry.getName());
-                        patchedDex.delete();
                     } else {
-                        result.put(entry.getName(), readBytes(tempDex));
+                        result.put(entry.getName(), tempDex);
                     }
                 } else {
-                    result.put(entry.getName(), readBytes(tempDex));
+                    result.put(entry.getName(), tempDex);
                 }
-                tempDex.delete();
             }
         }
 
@@ -173,12 +177,11 @@ public class PatchEngine {
         }
 
         // Add AdSweep payload DEX
-        int nextNum = result.size() + 1;
+        int nextNum = dexCount + 1;
         String payloadName = "classes" + nextNum + ".dex";
-        File payloadDex = new File(workDir, "payload.dex");
+        File payloadDex = new File(workDir, payloadName);
         copyAsset(context.getAssets(), "payload/classes.dex", payloadDex);
-        result.put(payloadName, readBytes(payloadDex));
-        payloadDex.delete();
+        result.put(payloadName, payloadDex);
         progress("Added " + payloadName);
 
         return result;
@@ -186,41 +189,31 @@ public class PatchEngine {
 
     // --- Build patched APK ---
 
-    private void buildPatchedApk(File originalApk, Map<String, byte[]> dexes,
+    private void buildPatchedApk(File originalApk, Map<String, File> dexFiles,
                                   File appRules, File outputApk) throws Exception {
         AssetManager assets = context.getAssets();
 
-        // Use Apache Commons Compress (java.util.zip on Android ignores STORED)
         try (ZipFile src = new ZipFile(originalApk)) {
             org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos =
                     new org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream(outputApk);
 
             Set<String> written = new HashSet<>();
 
-            // Copy original entries (skip DEX + META-INF), preserve compression
+            // Copy original entries (skip DEX + META-INF), stream one at a time
             Enumeration<? extends ZipEntry> entries = src.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 if (entry.getName().matches("classes\\d*\\.dex")) continue;
                 if (entry.getName().startsWith("META-INF/")) continue;
 
-                byte[] data = readStreamBytes(src.getInputStream(entry));
-                addStoredEntry(zos, entry.getName(), data);
+                addStoredEntryFromStream(zos, entry.getName(), src.getInputStream(entry), entry.getSize());
                 written.add(entry.getName());
             }
 
-            // Write patched DEX files (STORED)
-            for (Map.Entry<String, byte[]> dex : dexes.entrySet()) {
-                byte[] data = dex.getValue();
-                org.apache.commons.compress.archivers.zip.ZipArchiveEntry ne =
-                        new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(dex.getKey());
-                ne.setMethod(org.apache.commons.compress.archivers.zip.ZipArchiveEntry.STORED);
-                ne.setSize(data.length);
-                ne.setCompressedSize(data.length);
-                ne.setCrc(calcCrc32(data));
-                zos.putArchiveEntry(ne);
-                zos.write(data);
-                zos.closeArchiveEntry();
+            // Write patched DEX files from temp files (STORED)
+            for (Map.Entry<String, File> dex : dexFiles.entrySet()) {
+                File f = dex.getValue();
+                addStoredEntryFromFile(zos, dex.getKey(), f);
             }
 
             // Add .so files (STORED)
@@ -234,7 +227,7 @@ public class PatchEngine {
                 }
             }
 
-            // Add assets (DEFLATED is fine for these)
+            // Add assets
             for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
                 String entryName = "assets/" + name;
                 if (!written.contains(entryName)) {
@@ -243,12 +236,75 @@ public class PatchEngine {
                 }
             }
 
-            // Add app rules
             if (appRules != null && appRules.exists()) {
-                addStoredEntry(zos, "assets/adsweep_rules_app.json", readBytes(appRules));
+                addStoredEntryFromFile(zos, "assets/adsweep_rules_app.json", appRules);
             }
 
             zos.close();
+        }
+    }
+
+    private void addStoredEntryFromFile(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
+                                         String name, File file) throws Exception {
+        long size = file.length();
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = fis.read(buf)) > 0) crc.update(buf, 0, len);
+        }
+
+        org.apache.commons.compress.archivers.zip.ZipArchiveEntry e =
+                new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
+        e.setMethod(0); // STORED
+        e.setSize(size);
+        e.setCompressedSize(size);
+        e.setCrc(crc.getValue());
+        zos.putArchiveEntry(e);
+
+        try (FileInputStream fis = new FileInputStream(file)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
+        }
+        zos.closeArchiveEntry();
+    }
+
+    private void addStoredEntryFromStream(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
+                                            String name, InputStream is, long knownSize) throws Exception {
+        // Must read fully to compute CRC, then write
+        // Use a temp file to avoid loading large entries into memory
+        File tmp = File.createTempFile("entry_", null, context.getCacheDir());
+        try {
+            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            long size = 0;
+            try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = is.read(buf)) > 0) {
+                    fos.write(buf, 0, len);
+                    crc.update(buf, 0, len);
+                    size += len;
+                }
+            }
+            is.close();
+
+            org.apache.commons.compress.archivers.zip.ZipArchiveEntry e =
+                    new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
+            e.setMethod(0);
+            e.setSize(size);
+            e.setCompressedSize(size);
+            e.setCrc(crc.getValue());
+            zos.putArchiveEntry(e);
+
+            try (FileInputStream fis = new FileInputStream(tmp)) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
+            }
+            zos.closeArchiveEntry();
+        } finally {
+            tmp.delete();
         }
     }
 
@@ -627,7 +683,7 @@ public class PatchEngine {
                 .setOutputApk(outputApk)
                 .setV1SigningEnabled(true)
                 .setV2SigningEnabled(true)
-                .setAlignmentPreserved(true)
+                .setAlignmentPreserved(false)
                 .build();
         signer.sign();
     }

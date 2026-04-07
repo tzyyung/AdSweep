@@ -14,11 +14,12 @@ import java.io.FileOutputStream;
 /**
  * Receives commands via adb broadcast for automated testing.
  *
- * Usage:
- *   adb shell am broadcast -a com.adsweep.manager.CMD_SELECT --es package com.example.app
- *   adb shell am broadcast -a com.adsweep.manager.CMD_PATCH
- *   adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL --es apk_path /sdcard/patched.apk
- *   adb shell am broadcast -a com.adsweep.manager.CMD_STATUS
+ * Usage (add -n com.adsweep.manager/.CommandReceiver for Android 14+):
+ *   adb shell am broadcast -a com.adsweep.manager.CMD_SELECT -n ... --es package com.example.app
+ *   adb shell am broadcast -a com.adsweep.manager.CMD_PATCH -n ...
+ *   adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL -n ...
+ *   adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL -n ...
+ *   adb shell am broadcast -a com.adsweep.manager.CMD_STATUS -n ...
  */
 public class CommandReceiver extends BroadcastReceiver {
 
@@ -26,6 +27,7 @@ public class CommandReceiver extends BroadcastReceiver {
 
     public static final String ACTION_SELECT = "com.adsweep.manager.CMD_SELECT";
     public static final String ACTION_PATCH = "com.adsweep.manager.CMD_PATCH";
+    public static final String ACTION_UNINSTALL = "com.adsweep.manager.CMD_UNINSTALL";
     public static final String ACTION_INSTALL = "com.adsweep.manager.CMD_INSTALL";
     public static final String ACTION_STATUS = "com.adsweep.manager.CMD_STATUS";
 
@@ -48,6 +50,9 @@ public class CommandReceiver extends BroadcastReceiver {
                 break;
             case ACTION_PATCH:
                 handlePatch(context);
+                break;
+            case ACTION_UNINSTALL:
+                handleUninstall(context);
                 break;
             case ACTION_INSTALL:
                 handleInstall(context, intent);
@@ -127,6 +132,25 @@ public class CommandReceiver extends BroadcastReceiver {
             }
         });
         engine.patch(selectedApk, null);
+    }
+
+    private void handleUninstall(Context context) {
+        if (selectedPackage == null) {
+            Log.e(TAG, "No package selected. Run CMD_SELECT first.");
+            return;
+        }
+
+        try {
+            Intent uninstallIntent = new Intent(Intent.ACTION_DELETE);
+            uninstallIntent.setData(android.net.Uri.parse("package:" + selectedPackage));
+            uninstallIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(uninstallIntent);
+            status = "uninstalling:" + selectedPackage;
+            Log.i(TAG, "Uninstall requested for: " + selectedPackage);
+        } catch (Exception e) {
+            Log.e(TAG, "Uninstall failed: " + e.getMessage());
+            status = "error:" + e.getMessage();
+        }
     }
 
     private void handleInstall(Context context, Intent intent) {

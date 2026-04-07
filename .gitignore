@@ -6,6 +6,7 @@
 /build
 /core/build
 /manager/build
+/patchtest/build
 /captures
 .externalNativeBuild
 .cxx
@@ -26,3 +27,6 @@ __pycache__/
 /injector/*.apk
 output/
 injector/baksmali.jar
+
+# Test resources (large DEX files)
+**/test_classes*.dex

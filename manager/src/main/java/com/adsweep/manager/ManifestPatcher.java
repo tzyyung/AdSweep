@@ -267,22 +267,39 @@ public class ManifestPatcher {
     private static void replaceEntryInZip(File zipFile, String entryName, byte[] newData) throws Exception {
         File tmp = new File(zipFile.getParent(), zipFile.getName() + ".tmp");
         try (ZipFile src = new ZipFile(zipFile);
-             ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tmp))) {
+             org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos =
+                     new org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream(tmp)) {
             java.util.Enumeration<? extends ZipEntry> entries = src.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
+                byte[] data;
                 if (entry.getName().equals(entryName)) {
-                    zos.putNextEntry(new ZipEntry(entryName));
-                    zos.write(newData);
+                    data = newData;
                 } else {
-                    zos.putNextEntry(new ZipEntry(entry.getName()));
                     InputStream is = src.getInputStream(entry);
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
                     byte[] buf = new byte[8192];
                     int len;
-                    while ((len = is.read(buf)) > 0) zos.write(buf, 0, len);
+                    while ((len = is.read(buf)) > 0) bos.write(buf, 0, len);
                     is.close();
+                    data = bos.toByteArray();
                 }
-                zos.closeEntry();
+                // Preserve original compression method
+                org.apache.commons.compress.archivers.zip.ZipArchiveEntry newEntry =
+                        new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(entry.getName());
+                if (entry.getMethod() == ZipEntry.STORED) {
+                    newEntry.setMethod(org.apache.commons.compress.archivers.zip.ZipArchiveEntry.STORED);
+                    newEntry.setSize(data.length);
+                    newEntry.setCompressedSize(data.length);
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    crc.update(data);
+                    newEntry.setCrc(crc.getValue());
+                } else {
+                    newEntry.setMethod(org.apache.commons.compress.archivers.zip.ZipArchiveEntry.DEFLATED);
+                }
+                zos.putArchiveEntry(newEntry);
+                zos.write(data);
+                zos.closeArchiveEntry();
             }
         }
         zipFile.delete();

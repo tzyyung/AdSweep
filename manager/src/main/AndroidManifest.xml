@@ -16,6 +16,7 @@
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="AdSweep Manager"
+        android:largeHeap="true"
         android:theme="@style/Theme.AdSweep">
 
         <activity
@@ -34,6 +35,7 @@
             <intent-filter>
                 <action android:name="com.adsweep.manager.CMD_SELECT" />
                 <action android:name="com.adsweep.manager.CMD_PATCH" />
+                <action android:name="com.adsweep.manager.CMD_UNINSTALL" />
                 <action android:name="com.adsweep.manager.CMD_INSTALL" />
                 <action android:name="com.adsweep.manager.CMD_STATUS" />
             </intent-filter>

@@ -2,12 +2,13 @@
 
 ## 概覽
 
-AdSweep 由兩部分組成：
+AdSweep 由三部分組成：
 
 1. **Python Injector** — 在電腦上執行，將 Hook 模組注入到目標 APK
 2. **Android Core** — 被注入的模組，在 App 啟動時自動攔截廣告
+3. **Manager App** — Android 上的管理工具，可在手機上完成 SELECT → PATCH → UNINSTALL → INSTALL 全流程
 
-## 注入流程
+## PC 端注入流程
 
 ```mermaid
 sequenceDiagram
@@ -43,6 +44,71 @@ sequenceDiagram
     inject.py->>packager.py: zipalign -p + apksigner
     packager.py-->>User: patched.apk
 ```
+
+## Manager App On-Device 流程
+
+```mermaid
+sequenceDiagram
+    participant PC as PC (adb)
+    participant Mgr as Manager App
+    participant Sys as Android System
+
+    PC->>Mgr: CMD_SELECT --es package com.example.app
+    Mgr->>Sys: PackageManager.getApplicationInfo()
+    Mgr->>Mgr: 複製 base.apk + split APKs 到 internal storage
+
+    PC->>Mgr: CMD_PATCH
+    Mgr->>Mgr: baksmali → 修改 Application.onCreate smali → smali
+    Note over Mgr: 注入 AdSweep.init() 到 onCreate
+    Mgr->>Mgr: buildPatchedApk (commons-compress, STORED)
+    Note over Mgr: resources.arsc 必須 STORED + 4-byte aligned
+    Mgr->>Mgr: ManifestPatcher (binary patch)
+    Mgr->>Mgr: ApkSigner (v1+v2, alignment)
+
+    PC->>Mgr: CMD_UNINSTALL
+    Mgr->>Sys: ACTION_DELETE intent
+
+    PC->>Mgr: CMD_INSTALL
+    Mgr->>Sys: PackageInstaller.Session
+    Sys->>Sys: 用戶確認 → 安裝
+```
+
+### CommandReceiver Broadcast 指令
+
+所有指令需加 `-n com.adsweep.manager/.CommandReceiver`（Android 14+ 隱式 broadcast 限制）：
+
+```bash
+# 選取目標 App（複製 APK + splits 到 internal storage）
+adb shell am broadcast -a com.adsweep.manager.CMD_SELECT \
+  -n com.adsweep.manager/.CommandReceiver --es package com.example.app
+
+# Patch（baksmali/smali + 打包 + 簽名，約 50-90 秒）
+adb shell am broadcast -a com.adsweep.manager.CMD_PATCH \
+  -n com.adsweep.manager/.CommandReceiver
+
+# 解除安裝原版（彈出確認對話框）
+adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL \
+  -n com.adsweep.manager/.CommandReceiver
+
+# 安裝 patched APK（彈出安裝確認）
+adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL \
+  -n com.adsweep.manager/.CommandReceiver
+
+# 查看狀態
+adb shell am broadcast -a com.adsweep.manager.CMD_STATUS \
+  -n com.adsweep.manager/.CommandReceiver
+```
+
+### On-Device Patching 技術要點
+
+| 元件 | 技術 | 說明 |
+|------|------|------|
+| DEX Patching | baksmali/smali | 避免 dexlib2 DexPool OOM 和 debug info 損壞 |
+| APK 打包 | Apache Commons Compress | Android 的 java.util.zip 忽略 STORED 設定 |
+| resources.arsc | 必須 STORED + 4-byte aligned | Android 11+ (R+) 硬性要求 |
+| Manifest | Binary patch (commons-compress) | 保留原始壓縮方式 |
+| 簽名 | ApkSigner (setAlignmentPreserved=false) | 讓 ApkSigner 主動做 alignment |
+| 記憶體 | File-based streaming | 避免同時載入所有 DEX 到記憶體 |
 
 ## 為什麼用 -r 模式
 
@@ -175,6 +241,19 @@ graph TB
             I6["rules/ — App 規則範例"]
         end
 
+        subgraph Manager["manager/ — Android Manager App"]
+            M1["CommandReceiver — adb broadcast 介面"]
+            M2["PatchEngine — on-device patching"]
+            M3["DexPatcher — baksmali/smali DEX 注入"]
+            M4["ManifestPatcher — binary manifest 修改"]
+            M5["InstallReceiver — 安裝狀態回調"]
+        end
+
+        subgraph PatchTest["patchtest/ — PC 端單元測試"]
+            PT1["DexPatcherTest — DexPool 驗證"]
+            PT2["DexPatcherSmaliTest — baksmali/smali 驗證"]
+        end
+
         subgraph Prebuilt["prebuilt/ — 編譯產出"]
             P1["classes.dex"]
             P2["lib/**/*.so"]
@@ -278,3 +357,5 @@ graph LR
 | Binary Manifest | 目前只能改 boolean 屬性 | 未來擴充新增 permission/activity |
 | Layer 3 UI | 需要 SYSTEM_ALERT_WINDOW | 未註冊到 manifest，降級為通知 |
 | Split APK | 需同一把 keystore 簽名 | 手動重簽 split APK |
+| On-device OOM | 大 APK (>50MB) 需 largeHeap | Manager 已設定 largeHeap=true |
+| Android 14+ Broadcast | 隱式 broadcast 受限 | 需加 -n 指定 component |

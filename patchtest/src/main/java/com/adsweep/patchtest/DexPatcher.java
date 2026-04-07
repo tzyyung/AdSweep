@@ -1,6 +1,4 @@
-package com.adsweep.manager;
-
-import android.util.Log;
+package com.adsweep.patchtest;
 
 import com.android.tools.smali.dexlib2.DexFileFactory;
 import com.android.tools.smali.dexlib2.Opcodes;
@@ -8,7 +6,9 @@ import com.android.tools.smali.dexlib2.iface.ClassDef;
 import com.android.tools.smali.dexlib2.iface.DexFile;
 import com.android.tools.smali.dexlib2.iface.Method;
 import com.android.tools.smali.dexlib2.iface.MethodImplementation;
+import com.android.tools.smali.dexlib2.iface.debug.DebugItem;
 import com.android.tools.smali.dexlib2.iface.instruction.Instruction;
+import com.android.tools.smali.dexlib2.immutable.ImmutableDexFile;
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethod;
 import com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation;
 import com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction35c;
@@ -23,99 +23,96 @@ import java.util.List;
 
 /**
  * Patches a DEX file to inject AdSweep.init() into Application.onCreate().
- * Uses dexlib2 for direct bytecode manipulation — no smali text involved.
+ * PC-side version for unit testing (no Android Log dependency).
  */
 public class DexPatcher {
 
-    private static final String TAG = "AdSweep.DexPatch";
-
     /**
      * Find and patch the DEX file containing the Application class.
-     * Uses baksmali→patch→smali to avoid OOM from DexPool interning all classes.
-     * Only the target class is modified; everything else is preserved.
      */
     public static boolean patchDex(File dexFile, String applicationClass, File outputDex) {
         try {
+            DexFile dex = DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault());
             String targetType = "L" + applicationClass.replace('.', '/') + ";";
 
-            // Step 1: baksmali the entire DEX to smali files
-            File smaliDir = new File(dexFile.getParent(), "smali_tmp");
-            if (smaliDir.exists()) deleteRecursive(smaliDir);
-            smaliDir.mkdirs();
+            List<ClassDef> classes = new ArrayList<>();
+            boolean found = false;
 
-            com.android.tools.smali.baksmali.Baksmali.disassembleDexFile(
-                    DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault()),
-                    smaliDir, 1, new com.android.tools.smali.baksmali.BaksmaliOptions());
-
-            // Step 2: Find and patch the target smali file
-            String smaliPath = applicationClass.replace('.', '/') + ".smali";
-            File smaliFile = new File(smaliDir, smaliPath);
-            if (!smaliFile.exists()) {
-                Log.e(TAG, "Smali file not found: " + smaliPath);
-                return false;
+            for (ClassDef classDef : dex.getClasses()) {
+                if (classDef.getType().equals(targetType)) {
+                    ClassDef patched = patchApplicationClass(classDef);
+                    if (patched != null) {
+                        classes.add(patched);
+                        found = true;
+                        System.out.println("Patched: " + applicationClass);
+                    } else {
+                        classes.add(classDef);
+                    }
+                } else {
+                    classes.add(classDef);
+                }
             }
 
-            // Read and inject init call into onCreate
-            String smaliContent = new String(java.nio.file.Files.readAllBytes(smaliFile.toPath()));
-            String onCreateMarker = ".method public onCreate()V";
-            int idx = smaliContent.indexOf(onCreateMarker);
-            if (idx < 0) {
-                // Try protected or other access
-                onCreateMarker = ".method protected onCreate()V";
-                idx = smaliContent.indexOf(onCreateMarker);
-            }
-            if (idx < 0) {
-                Log.e(TAG, "onCreate() not found in " + applicationClass);
-                return false;
+            if (!found) return false;
+
+            // Strip debug info from all methods to avoid DexPool string index corruption
+            List<ClassDef> strippedClasses = new ArrayList<>();
+            for (ClassDef c : classes) {
+                strippedClasses.add(stripDebugInfo(c));
             }
 
-            // Find .locals or .registers line after method declaration
-            int afterMethod = smaliContent.indexOf('\n', idx) + 1;
-            int localsLine = smaliContent.indexOf('\n', afterMethod) + 1;
-
-            // Insert invoke-static after .locals/.registers line
-            String injection = "    invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V\n";
-
-            // Check if already injected
-            if (smaliContent.contains("Lcom/adsweep/AdSweep;->init")) {
-                Log.i(TAG, "Already injected, skipping");
-                return false;
+            // Write patched DEX using DexPool
+            DexPool pool = new DexPool(Opcodes.getDefault());
+            for (ClassDef c : strippedClasses) {
+                pool.internClass(c);
             }
-
-            smaliContent = smaliContent.substring(0, localsLine) + injection + smaliContent.substring(localsLine);
-            java.nio.file.Files.write(smaliFile.toPath(), smaliContent.getBytes());
-
-            Log.i(TAG, "Patched smali: " + smaliPath);
-
-            // Step 3: smali back to DEX
-            com.android.tools.smali.smali.SmaliOptions options = new com.android.tools.smali.smali.SmaliOptions();
-            options.outputDexFile = outputDex.getAbsolutePath();
-            options.apiLevel = 26;
-            boolean success = com.android.tools.smali.smali.Smali.assemble(options, smaliDir.getAbsolutePath());
-
-            // Cleanup
-            deleteRecursive(smaliDir);
-
-            if (!success) {
-                Log.e(TAG, "smali assembly failed");
-                return false;
-            }
-
-            Log.i(TAG, "Patched: " + applicationClass);
+            pool.writeTo(new FileDataStore(outputDex));
             return true;
 
         } catch (Exception e) {
-            Log.e(TAG, "DEX patch failed", e);
+            System.err.println("DEX patch failed: " + e);
+            e.printStackTrace();
             return false;
         }
     }
 
-    private static void deleteRecursive(File f) {
-        if (f.isDirectory()) {
-            File[] children = f.listFiles();
-            if (children != null) for (File c : children) deleteRecursive(c);
+    /**
+     * Alternative: Write using DexFileFactory (may preserve structure better).
+     */
+    public static boolean patchDexV2(File dexFile, String applicationClass, File outputDex) {
+        try {
+            DexFile dex = DexFileFactory.loadDexFile(dexFile, Opcodes.getDefault());
+            String targetType = "L" + applicationClass.replace('.', '/') + ";";
+
+            List<ClassDef> classes = new ArrayList<>();
+            boolean found = false;
+
+            for (ClassDef classDef : dex.getClasses()) {
+                if (classDef.getType().equals(targetType)) {
+                    ClassDef patched = patchApplicationClass(classDef);
+                    if (patched != null) {
+                        classes.add(patched);
+                        found = true;
+                        System.out.println("Patched (v2): " + applicationClass);
+                    } else {
+                        classes.add(classDef);
+                    }
+                } else {
+                    classes.add(classDef);
+                }
+            }
+
+            if (!found) return false;
+
+            DexFile patchedDex = new ImmutableDexFile(Opcodes.getDefault(), classes);
+            DexFileFactory.writeDexFile(outputDex.getAbsolutePath(), patchedDex);
+            return true;
+
+        } catch (Exception e) {
+            System.err.println("DEX patch v2 failed: " + e);
+            e.printStackTrace();
+            return false;
         }
-        f.delete();
     }
 
     /**
@@ -200,14 +197,6 @@ public class DexPatcher {
     private static Method injectInitCall(Method original) {
         MethodImplementation impl = original.getImplementation();
         if (impl == null) return null;
-
-        // Check if already injected
-        for (Instruction inst : impl.getInstructions()) {
-            if (inst.toString().contains("AdSweep")) {
-                Log.i(TAG, "Already injected, skipping");
-                return null;
-            }
-        }
 
         // Build: invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V
         ImmutableMethodReference initRef = new ImmutableMethodReference(

@@ -184,6 +184,71 @@ I AdSweep : === AdSweep Ready: 22 hooks active ===
 I AdSweep.Block: Blocked: com.applovin.sdk.AppLovinSdk.initialize
 ```
 
+## Manager App（On-Device Patching）
+
+### 建置
+
+```bash
+./gradlew :manager:assembleDebug
+# 輸出: manager/build/outputs/apk/debug/manager-debug.apk
+```
+
+### 安裝到模擬器
+
+```bash
+adb install -r manager/build/outputs/apk/debug/manager-debug.apk
+```
+
+### 完整 Patch 流程
+
+```bash
+N="-n com.adsweep.manager/.CommandReceiver"
+
+# 先啟動 Manager（確保進程存活）
+adb shell am start -n com.adsweep.manager/.MainActivity
+
+# 1. 選取目標 App
+adb shell am broadcast -a com.adsweep.manager.CMD_SELECT $N \
+  --es package com.realbyteapps.moneymanagerfree
+
+# 2. Patch（約 50-90 秒）
+adb shell am broadcast -a com.adsweep.manager.CMD_PATCH $N
+
+# 3. 解除安裝原版
+adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL $N
+# → 手動確認解除安裝
+
+# 4. 安裝 patched 版
+adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL $N
+# → 手動確認安裝
+
+# 5. 查看狀態
+adb shell am broadcast -a com.adsweep.manager.CMD_STATUS $N
+```
+
+### 查看 Patch 進度
+
+```bash
+adb logcat -s "AdSweep.Cmd" "AdSweep.Patch" "AdSweep.DexPatch" "AdSweep.Manifest"
+```
+
+### 單元測試（PC 端）
+
+在修改 DexPatcher 後，先跑 PC 端測試確認：
+
+```bash
+ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew :patchtest:test
+```
+
+### Manager App 依賴
+
+```
+com.android.tools.smali:smali-baksmali:3.0.7  # baksmali DEX → smali
+com.android.tools.smali:smali:3.0.7           # smali → DEX
+com.android.tools.build:apksig:8.7.3          # APK 簽名
+org.apache.commons:commons-compress:1.27.1     # ZIP STORED 支援
+```
+
 ## 簽名金鑰
 
 ```bash
@@ -219,21 +284,31 @@ AdSweep/
 ├── build.gradle.kts            # Root Gradle
 ├── settings.gradle.kts
 ├── local.properties            # SDK path
-├── core/                       # Android Library
+├── core/                       # Android Library (Hook 引擎)
 │   ├── build.gradle.kts        # NDK/CMake/LSPlant config
 │   └── src/main/
 │       ├── java/com/adsweep/   # Java sources
 │       ├── jni/                # C++ (LSPlant JNI)
 │       └── assets/             # Built-in rules JSON
-├── injector/                   # Python toolchain
+├── manager/                    # Manager App (On-Device Patching)
+│   ├── build.gradle.kts        # dexlib2, apksig, commons-compress
+│   └── src/main/
+│       ├── java/com/adsweep/manager/
+│       │   ├── CommandReceiver.java   # adb broadcast 介面
+│       │   ├── PatchEngine.java       # 打包 + 簽名
+│       │   ├── DexPatcher.java        # baksmali/smali DEX 注入
+│       │   ├── ManifestPatcher.java   # Binary manifest 修改
+│       │   └── InstallReceiver.java   # 安裝狀態回調
+│       ├── AndroidManifest.xml
+│       └── assets/                    # debug.p12, payload/
+├── patchtest/                  # PC 端 DexPatcher 單元測試
+│   └── src/test/java/          # JUnit tests
+├── injector/                   # Python toolchain (PC 端)
 │   ├── inject.py               # Main CLI
-│   ├── decompiler.py           # apktool -r wrapper
 │   ├── scanner.py              # Layer 2 + auto rules
 │   ├── patcher.py              # smali injection
 │   ├── manifest_patcher.py     # Binary AXML patching
 │   ├── packager.py             # zipalign + sign
-│   ├── config.py               # Tool paths
-│   ├── baksmali.jar            # DEX → smali
 │   └── rules/                  # App rule examples
 ├── prebuilt/                   # Build output for injector
 │   ├── classes.dex
