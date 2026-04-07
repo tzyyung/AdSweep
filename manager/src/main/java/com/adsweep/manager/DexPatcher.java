@@ -76,10 +76,13 @@ public class DexPatcher {
             // Insert invoke-static after .locals/.registers line
             String injection = "    invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V\n";
 
-            // Check if already injected
+            // Check if already injected — treat as success (copy original DEX)
             if (smaliContent.contains("Lcom/adsweep/AdSweep;->init")) {
-                Log.i(TAG, "Already injected, skipping");
-                return false;
+                Log.i(TAG, "Already injected, copying original DEX");
+                java.nio.file.Files.copy(dexFile.toPath(), outputDex.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                deleteRecursive(smaliDir);
+                return true;
             }
 
             smaliContent = smaliContent.substring(0, localsLine) + injection + smaliContent.substring(localsLine);

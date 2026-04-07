@@ -48,9 +48,20 @@ public class PatchEngine {
         this.callback = callback;
     }
 
-    public void patch(File inputApk, File appRules) {
+    public void patch(File inputApk, String packageName) {
         new Thread(() -> {
             try {
+                // Fetch app-specific rules on background thread
+                File appRules = null;
+                if (packageName != null && !"unknown".equals(packageName)) {
+                    progress("Fetching rules for " + packageName + "...");
+                    appRules = RuleFetcher.fetch(packageName, context.getCacheDir());
+                    if (appRules != null) {
+                        progress("Rules downloaded");
+                    } else {
+                        progress("No app rules, using common rules");
+                    }
+                }
                 doPatch(inputApk, appRules);
             } catch (Throwable t) {
                 Log.e(TAG, "Patch failed", t);
@@ -100,7 +111,7 @@ public class PatchEngine {
 
         // Step 4: Sign
         progress("Signing APK...");
-        signApk(unsignedApk, outputApk);
+        signApk(context, unsignedApk, outputApk);
 
         // Debug: keep unsigned for verification
         // (TODO: remove in production)
@@ -189,9 +200,21 @@ public class PatchEngine {
 
     // --- Build patched APK ---
 
+    /**
+     * Returns true if the ZIP entry is an APK signature file that should be stripped.
+     */
+    static boolean isSignatureFile(String name) {
+        if (!name.startsWith("META-INF/")) return false;
+        String upper = name.toUpperCase();
+        return upper.endsWith(".SF") || upper.endsWith(".RSA")
+                || upper.endsWith(".DSA") || upper.endsWith(".EC")
+                || upper.equals("META-INF/MANIFEST.MF");
+    }
+
     private void buildPatchedApk(File originalApk, Map<String, File> dexFiles,
                                   File appRules, File outputApk) throws Exception {
         AssetManager assets = context.getAssets();
+        Set<String> skipNames = new HashSet<>(dexFiles.keySet());
 
         try (ZipFile src = new ZipFile(originalApk)) {
             org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos =
@@ -199,40 +222,41 @@ public class PatchEngine {
 
             Set<String> written = new HashSet<>();
 
-            // Copy original entries (skip DEX + META-INF), stream one at a time
+            // Pass 1: copy original entries, preserving compression method
             Enumeration<? extends ZipEntry> entries = src.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                if (entry.getName().matches("classes\\d*\\.dex")) continue;
-                if (entry.getName().startsWith("META-INF/")) continue;
+                String name = entry.getName();
+                if (skipNames.contains(name)) continue;
+                if (isSignatureFile(name)) continue;
 
-                addStoredEntryFromStream(zos, entry.getName(), src.getInputStream(entry), entry.getSize());
-                written.add(entry.getName());
+                copyEntry(zos, src, entry);
+                written.add(name);
             }
 
-            // Write patched DEX files from temp files (STORED)
+            // Pass 2: write patched DEX files (STORED)
             for (Map.Entry<String, File> dex : dexFiles.entrySet()) {
-                File f = dex.getValue();
-                addStoredEntryFromFile(zos, dex.getKey(), f);
+                addStoredEntryFromFile(zos, dex.getKey(), dex.getValue());
             }
 
-            // Add .so files (STORED)
+            // Pass 3: add payload files (STORED, only if not already in APK)
             for (String abi : new String[]{"arm64-v8a", "armeabi-v7a"}) {
                 for (String soName : assets.list("payload/lib/" + abi)) {
                     String entryName = "lib/" + abi + "/" + soName;
                     if (!written.contains(entryName)) {
                         byte[] data = readAssetBytes(assets, "payload/lib/" + abi + "/" + soName);
                         addStoredEntry(zos, entryName, data);
+                        written.add(entryName);
                     }
                 }
             }
 
-            // Add assets
             for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
                 String entryName = "assets/" + name;
                 if (!written.contains(entryName)) {
                     byte[] data = readAssetBytes(assets, "payload/" + name);
                     addStoredEntry(zos, entryName, data);
+                    written.add(entryName);
                 }
             }
 
@@ -241,6 +265,62 @@ public class PatchEngine {
             }
 
             zos.close();
+        }
+    }
+
+    /**
+     * Copy a ZIP entry preserving its original compression method.
+     */
+    private void copyEntry(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
+                           ZipFile src, ZipEntry entry) throws Exception {
+        String name = entry.getName();
+        InputStream is = src.getInputStream(entry);
+
+        if (entry.getMethod() == ZipEntry.STORED) {
+            // STORED: need CRC and sizes
+            File tmp = File.createTempFile("entry_", null, context.getCacheDir());
+            try {
+                CRC32 crc = new CRC32();
+                long size = 0;
+                try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) > 0) {
+                        fos.write(buf, 0, len);
+                        crc.update(buf, 0, len);
+                        size += len;
+                    }
+                }
+                is.close();
+
+                org.apache.commons.compress.archivers.zip.ZipArchiveEntry out =
+                        new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
+                out.setMethod(ZipEntry.STORED);
+                out.setSize(size);
+                out.setCompressedSize(size);
+                out.setCrc(crc.getValue());
+                zos.putArchiveEntry(out);
+
+                try (FileInputStream fis = new FileInputStream(tmp)) {
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
+                }
+                zos.closeArchiveEntry();
+            } finally {
+                tmp.delete();
+            }
+        } else {
+            // DEFLATED: let ZOS recompress
+            org.apache.commons.compress.archivers.zip.ZipArchiveEntry out =
+                    new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
+            out.setMethod(ZipEntry.DEFLATED);
+            zos.putArchiveEntry(out);
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = is.read(buf)) > 0) zos.write(buf, 0, len);
+            is.close();
+            zos.closeArchiveEntry();
         }
     }
 
@@ -268,44 +348,6 @@ public class PatchEngine {
             while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
         }
         zos.closeArchiveEntry();
-    }
-
-    private void addStoredEntryFromStream(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
-                                            String name, InputStream is, long knownSize) throws Exception {
-        // Must read fully to compute CRC, then write
-        // Use a temp file to avoid loading large entries into memory
-        File tmp = File.createTempFile("entry_", null, context.getCacheDir());
-        try {
-            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
-            long size = 0;
-            try (FileOutputStream fos = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = is.read(buf)) > 0) {
-                    fos.write(buf, 0, len);
-                    crc.update(buf, 0, len);
-                    size += len;
-                }
-            }
-            is.close();
-
-            org.apache.commons.compress.archivers.zip.ZipArchiveEntry e =
-                    new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(name);
-            e.setMethod(0);
-            e.setSize(size);
-            e.setCompressedSize(size);
-            e.setCrc(crc.getValue());
-            zos.putArchiveEntry(e);
-
-            try (FileInputStream fis = new FileInputStream(tmp)) {
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
-            }
-            zos.closeArchiveEntry();
-        } finally {
-            tmp.delete();
-        }
     }
 
     private void addStoredEntry(org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream zos,
@@ -664,10 +706,13 @@ public class PatchEngine {
         tmpOut.renameTo(apkFile);
     }
 
-    private void signApk(File unsignedApk, File outputApk) throws Exception {
-        // Load bundled PKCS12 keystore from assets
+    /**
+     * Sign an APK with the bundled debug key. Public static so CommandReceiver
+     * can re-sign split APKs with the same key.
+     */
+    public static void signApk(Context ctx, File inputApk, File outputApk) throws Exception {
         KeyStore ks = KeyStore.getInstance("PKCS12");
-        InputStream ksStream = context.getAssets().open("debug.p12");
+        InputStream ksStream = ctx.getAssets().open("debug.p12");
         ks.load(ksStream, "android".toCharArray());
         ksStream.close();
 
@@ -679,7 +724,7 @@ public class PatchEngine {
                 "debugkey", key, Collections.singletonList(cert)).build();
 
         ApkSigner signer = new ApkSigner.Builder(Collections.singletonList(signerConfig))
-                .setInputApk(unsignedApk)
+                .setInputApk(inputApk)
                 .setOutputApk(outputApk)
                 .setV1SigningEnabled(true)
                 .setV2SigningEnabled(true)

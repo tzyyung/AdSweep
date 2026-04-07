@@ -207,18 +207,22 @@ N="-n com.adsweep.manager/.CommandReceiver"
 # 先啟動 Manager（確保進程存活）
 adb shell am start -n com.adsweep.manager/.MainActivity
 
-# 1. 選取目標 App
+# 1. 選取目標 App（自動備份 split APKs）
 adb shell am broadcast -a com.adsweep.manager.CMD_SELECT $N \
   --es package com.realbyteapps.moneymanagerfree
 
-# 2. Patch（約 50-90 秒）
+# 也可以直接指定 APK 路徑：
+# adb shell am broadcast -a com.adsweep.manager.CMD_SELECT $N \
+#   --es apk_path /data/local/tmp/base.apk --es package com.example.app
+
+# 2. Patch（自動從 GitHub 下載 app rules，約 50-90 秒）
 adb shell am broadcast -a com.adsweep.manager.CMD_PATCH $N
 
 # 3. 解除安裝原版
 adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL $N
 # → 手動確認解除安裝
 
-# 4. 安裝 patched 版
+# 4. 安裝 patched 版（自動重簽名 split APKs 並一起安裝）
 adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL $N
 # → 手動確認安裝
 
@@ -229,7 +233,7 @@ adb shell am broadcast -a com.adsweep.manager.CMD_STATUS $N
 ### 查看 Patch 進度
 
 ```bash
-adb logcat -s "AdSweep.Cmd" "AdSweep.Patch" "AdSweep.DexPatch" "AdSweep.Manifest"
+adb logcat -s "AdSweep.Cmd" "AdSweep.Patch" "AdSweep.DexPatch" "AdSweep.Manifest" "AdSweep.Rules"
 ```
 
 ### 單元測試（PC 端）

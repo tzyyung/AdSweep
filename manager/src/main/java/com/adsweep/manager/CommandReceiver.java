@@ -65,37 +65,51 @@ public class CommandReceiver extends BroadcastReceiver {
 
     private void handleSelect(Context context, Intent intent) {
         String pkg = intent.getStringExtra("package");
-        if (pkg == null) {
-            Log.e(TAG, "Missing --es package <name>");
+        String apkPathStr = intent.getStringExtra("apk_path");
+
+        if (pkg == null && apkPathStr == null) {
+            Log.e(TAG, "Missing --es package <name> or --es apk_path <path>");
             return;
         }
 
         try {
-            PackageManager pm = context.getPackageManager();
-            ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
-            String apkPath = ai.sourceDir;
-
-            // Copy APK to internal storage
             File inputDir = new File(context.getFilesDir(), "input");
             inputDir.mkdirs();
             selectedApk = new File(inputDir, "target.apk");
-            copy(new File(apkPath), selectedApk);
-            selectedPackage = pkg;
 
-            // Backup split APKs
-            File splitDir = new File(context.getCacheDir(), "splits");
-            splitDir.mkdirs();
-            for (File f : splitDir.listFiles() != null ? splitDir.listFiles() : new File[0]) f.delete();
-            if (ai.splitSourceDirs != null) {
-                for (String sp : ai.splitSourceDirs) {
-                    File src = new File(sp);
-                    copy(src, new File(splitDir, src.getName()));
+            if (apkPathStr != null) {
+                // Direct APK path mode (for testing with APK files on storage)
+                File srcApk = new File(apkPathStr);
+                if (!srcApk.exists()) {
+                    Log.e(TAG, "APK not found: " + apkPathStr);
+                    return;
                 }
-                Log.i(TAG, "Backed up " + ai.splitSourceDirs.length + " splits");
+                if (!srcApk.getCanonicalPath().equals(selectedApk.getCanonicalPath())) {
+                    copy(srcApk, selectedApk);
+                }
+                selectedPackage = pkg != null ? pkg : "unknown";
+            } else {
+                PackageManager pm = context.getPackageManager();
+                ApplicationInfo ai = pm.getApplicationInfo(pkg, 0);
+                String apkPath = ai.sourceDir;
+                copy(new File(apkPath), selectedApk);
+                selectedPackage = pkg;
+
+                // Backup split APKs
+                File splitDir = new File(context.getCacheDir(), "splits");
+                splitDir.mkdirs();
+                for (File f : splitDir.listFiles() != null ? splitDir.listFiles() : new File[0]) f.delete();
+                if (ai.splitSourceDirs != null) {
+                    for (String sp : ai.splitSourceDirs) {
+                        File src = new File(sp);
+                        copy(src, new File(splitDir, src.getName()));
+                    }
+                    Log.i(TAG, "Backed up " + ai.splitSourceDirs.length + " splits");
+                }
             }
 
-            status = "selected:" + pkg;
-            Log.i(TAG, "Selected: " + pkg + " (" + selectedApk.length() / 1024 / 1024 + " MB)");
+            status = "selected:" + selectedPackage;
+            Log.i(TAG, "Selected: " + selectedPackage + " (" + selectedApk.length() / 1024 / 1024 + " MB)");
 
         } catch (Exception e) {
             Log.e(TAG, "Select failed: " + e.getMessage());
@@ -131,7 +145,7 @@ public class CommandReceiver extends BroadcastReceiver {
                 Log.i(TAG, "Patch complete: " + status);
             }
         });
-        engine.patch(selectedApk, null);
+        engine.patch(selectedApk, selectedPackage);
     }
 
     private void handleUninstall(Context context) {
@@ -154,11 +168,10 @@ public class CommandReceiver extends BroadcastReceiver {
     }
 
     private void handleInstall(Context context, Intent intent) {
-        // Accept either patched APK from patch step, or external path
         String apkPath = intent.getStringExtra("apk_path");
-        File apk = apkPath != null ? new File(apkPath) : patchedApk;
+        File baseApk = apkPath != null ? new File(apkPath) : patchedApk;
 
-        if (apk == null || !apk.exists()) {
+        if (baseApk == null || !baseApk.exists()) {
             Log.e(TAG, "No APK to install. Run CMD_PATCH first or pass --es apk_path");
             return;
         }
@@ -174,14 +187,23 @@ public class CommandReceiver extends BroadcastReceiver {
             int sessionId = installer.createSession(params);
             android.content.pm.PackageInstaller.Session session = installer.openSession(sessionId);
 
-            FileInputStream fis = new FileInputStream(apk);
-            java.io.OutputStream out = session.openWrite("base.apk", 0, apk.length());
-            byte[] buf = new byte[8192];
-            int len;
-            while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
-            session.fsync(out);
-            out.close();
-            fis.close();
+            // Write patched base APK
+            writeToSession(session, baseApk, "base.apk");
+
+            // Write re-signed split APKs (backed up during SELECT)
+            File splitDir = new File(context.getCacheDir(), "splits");
+            File[] splits = splitDir.exists() ? splitDir.listFiles() : null;
+            if (splits != null && splits.length > 0) {
+                for (File split : splits) {
+                    if (split == null || split.isDirectory()) continue;
+                    Log.i(TAG, "Re-signing split: " + split.getName());
+                    File resigned = new File(context.getCacheDir(), "rs_" + split.getName());
+                    PatchEngine.signApk(context, split, resigned);
+                    writeToSession(session, resigned, split.getName());
+                    resigned.delete();
+                }
+                Log.i(TAG, "Added " + splits.length + " split APKs");
+            }
 
             Intent cb = new Intent(context, InstallReceiver.class);
             cb.setAction("com.adsweep.manager.INSTALL_STATUS");
@@ -190,12 +212,25 @@ public class CommandReceiver extends BroadcastReceiver {
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_MUTABLE);
             session.commit(pi.getIntentSender());
 
-            Log.i(TAG, "Install session committed");
+            Log.i(TAG, "Install session committed with base + " +
+                    (splits != null ? splits.length : 0) + " splits");
 
         } catch (Exception e) {
             Log.e(TAG, "Install failed: " + e.getMessage());
             status = "error:" + e.getMessage();
         }
+    }
+
+    private void writeToSession(android.content.pm.PackageInstaller.Session session,
+                                File apk, String name) throws Exception {
+        FileInputStream fis = new FileInputStream(apk);
+        java.io.OutputStream out = session.openWrite(name, 0, apk.length());
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
+        session.fsync(out);
+        out.close();
+        fis.close();
     }
 
     private void handleStatus() {

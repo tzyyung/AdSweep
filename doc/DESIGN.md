@@ -176,6 +176,50 @@ graph LR
     style E fill:#4CAF50,color:#fff
 ```
 
+### buildPatchedApk 通用化
+
+```mermaid
+graph TD
+    A["V1: 全部 STORED + 硬編碼 skip META-INF"] -->|"破壞壓縮方式"| B["資源引用失效"]
+    A -->|"刪除 META-INF/services"| C["ServiceLoader 找不到 kotlinx-coroutines"]
+
+    D["V2: 保留原始壓縮 + isSignatureFile()"] -->|"只跳過簽名檔"| E["所有 entry 原樣複製 ✓"]
+    E --> F["通用，不需 app-specific 邏輯 ✓"]
+
+    style B fill:#f44336,color:#fff
+    style C fill:#f44336,color:#fff
+    style F fill:#4CAF50,color:#fff
+```
+
+### Split APK 處理
+
+Split APK（density/abi 分割）不能簡單合併到 base APK — 每個 split 有獨立的 `resources.arsc`。
+
+```mermaid
+graph TD
+    A["V1: 合併 split 到 base"] -->|"resources.arsc 無法合併"| B["Resource$NotFoundException"]
+    C["V2: Multi-APK install"] -->|"base + 重簽名 splits"| D["PackageInstaller.Session"]
+    D --> E["一次 commit，Android 自行處理 split 載入 ✓"]
+
+    style B fill:#f44336,color:#fff
+    style E fill:#4CAF50,color:#fff
+```
+
+### 自動 Rules 下載
+
+```mermaid
+sequenceDiagram
+    participant Mgr as PatchEngine (背景執行緒)
+    participant GH as GitHub (adsweep-rules)
+
+    Mgr->>GH: GET index.json
+    GH-->>Mgr: {apps: {pkg: {rulesUrl: "..."}}}
+    Mgr->>GH: GET apps/{pkg}/rules.json
+    GH-->>Mgr: App-specific rules (簽名繞過、廣告封鎖等)
+    Mgr->>Mgr: 寫入 assets/adsweep_rules_app.json
+    Note over Mgr: 失敗時靜默 fallback，只用 common rules
+```
+
 ## 效能考量
 
 ```mermaid

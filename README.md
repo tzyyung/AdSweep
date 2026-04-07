@@ -31,10 +31,14 @@ adb shell am start -n com.adsweep.manager/.MainActivity
 # 完整流程（N 是 component 參數，Android 14+ 必須）
 N="-n com.adsweep.manager/.CommandReceiver"
 adb shell am broadcast -a com.adsweep.manager.CMD_SELECT $N --es package com.example.app
-adb shell am broadcast -a com.adsweep.manager.CMD_PATCH $N       # 約 50-90 秒
+adb shell am broadcast -a com.adsweep.manager.CMD_PATCH $N       # 自動下載 rules，約 50-90 秒
 adb shell am broadcast -a com.adsweep.manager.CMD_UNINSTALL $N   # 確認解除安裝
-adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL $N     # 確認安裝
+adb shell am broadcast -a com.adsweep.manager.CMD_INSTALL $N     # 自動重簽 splits，確認安裝
 ```
+
+**自動化功能：**
+- **Rules 自動下載** — PATCH 時從 [adsweep-rules](https://github.com/tzyyung/adsweep-rules) 自動取得 app-specific 規則（簽名繞過、廣告封鎖等）
+- **Split APK 支援** — INSTALL 時自動重簽名 split APKs 並一起安裝，資源不遺失
 
 ### Python Injector（PC 端）
 

@@ -58,10 +58,12 @@ sequenceDiagram
     Mgr->>Mgr: 複製 base.apk + split APKs 到 internal storage
 
     PC->>Mgr: CMD_PATCH
+    Mgr->>Mgr: RuleFetcher: 從 GitHub 下載 app rules
+    Note over Mgr: adsweep-rules repo → index.json → rules.json
     Mgr->>Mgr: baksmali → 修改 Application.onCreate smali → smali
     Note over Mgr: 注入 AdSweep.init() 到 onCreate
-    Mgr->>Mgr: buildPatchedApk (commons-compress, STORED)
-    Note over Mgr: resources.arsc 必須 STORED + 4-byte aligned
+    Mgr->>Mgr: buildPatchedApk (保留原始壓縮方式)
+    Note over Mgr: isSignatureFile() 只跳過簽名檔，其餘原樣複製
     Mgr->>Mgr: ManifestPatcher (binary patch)
     Mgr->>Mgr: ApkSigner (v1+v2, alignment)
 
@@ -69,7 +71,8 @@ sequenceDiagram
     Mgr->>Sys: ACTION_DELETE intent
 
     PC->>Mgr: CMD_INSTALL
-    Mgr->>Sys: PackageInstaller.Session
+    Mgr->>Mgr: 重簽名 split APKs (同一 debug key)
+    Mgr->>Sys: PackageInstaller.Session (base + splits)
     Sys->>Sys: 用戶確認 → 安裝
 ```
 
@@ -104,11 +107,13 @@ adb shell am broadcast -a com.adsweep.manager.CMD_STATUS \
 | 元件 | 技術 | 說明 |
 |------|------|------|
 | DEX Patching | baksmali/smali | 避免 dexlib2 DexPool OOM 和 debug info 損壞 |
-| APK 打包 | Apache Commons Compress | Android 的 java.util.zip 忽略 STORED 設定 |
-| resources.arsc | 必須 STORED + 4-byte aligned | Android 11+ (R+) 硬性要求 |
-| Manifest | Binary patch (commons-compress) | 保留原始壓縮方式 |
+| APK 打包 | Apache Commons Compress | 保留原始壓縮方式（STORED/DEFLATED），只跳過簽名檔 |
+| resources.arsc | 原樣複製（STORED） | 不修改資源表，保證資源引用完整 |
+| Manifest | Binary patch (commons-compress) | extractNativeLibs=true, isSplitRequired=false |
 | 簽名 | ApkSigner (setAlignmentPreserved=false) | 讓 ApkSigner 主動做 alignment |
+| Split APK | Multi-APK install | 不合併 splits，重簽名後一起安裝（PackageInstaller.Session） |
 | 記憶體 | File-based streaming | 避免同時載入所有 DEX 到記憶體 |
+| App Rules | RuleFetcher | 自動從 adsweep-rules GitHub repo 下載 app-specific 規則 |
 
 ## 為什麼用 -r 模式
 

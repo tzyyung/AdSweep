@@ -110,7 +110,7 @@ sequenceDiagram
     inject.py-->>User: patched.apk
 ```
 
-### 指令
+### 指令（Python Injector）
 
 ```bash
 # 自動查找並下載規則
@@ -123,6 +123,26 @@ python inject.py --apk app.apk \
 # 只下載規則，不注入（離線使用）
 python inject.py --fetch-rules com.example.app --output rules.json
 ```
+
+### Manager App（On-Device，已實作）
+
+Manager app 在 CMD_PATCH 時自動從 GitHub 下載 app rules：
+
+```mermaid
+sequenceDiagram
+    participant Mgr as Manager App
+    participant GH as GitHub (adsweep-rules)
+
+    Note over Mgr: CMD_PATCH 觸發（背景執行緒）
+    Mgr->>GH: GET index.json
+    GH-->>Mgr: app 列表 + rulesUrl
+    Mgr->>GH: GET apps/{pkg}/rules.json
+    GH-->>Mgr: App 專屬規則
+    Mgr->>Mgr: 寫入 patched APK 的 assets/adsweep_rules_app.json
+    Note over Mgr: 下載失敗時靜默 fallback，只用 common rules
+```
+
+實作檔案：`manager/src/main/java/com/adsweep/manager/RuleFetcher.java`
 
 ## 社群貢獻流程
 

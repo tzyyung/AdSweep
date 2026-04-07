@@ -292,7 +292,7 @@ public class MainActivity extends Activity {
                 });
             }
         });
-        engine.patch(inputApk, null);
+        engine.patch(inputApk, selectedPackageName);
     }
 
     // ===================== Step 3: Uninstall =====================
