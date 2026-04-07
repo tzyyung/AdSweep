@@ -21,6 +21,7 @@ import tempfile
 from config import validate_tools
 from decompiler import decompile
 from scanner import scan, save_report, generate_suggested_rules, save_suggested_rules
+from smart_scanner import smart_scan, print_summary, generate_rules_from_findings
 from rule_fetcher import fetch_rules_for_package, fetch_domains, get_package_name_from_apk
 from patcher import patch
 from packager import package_apk
@@ -90,6 +91,17 @@ def main():
                 suggested_path = os.path.join(work_dir, "suggested_rules.json")
                 save_suggested_rules(suggested, suggested_path)
                 print(f"[*] Use these as app rules: --rules {suggested_path}")
+
+            # Smart scan (4-level detection for obfuscated apps)
+            smart_findings = smart_scan(decompiled_dir, verbose=True)
+            print_summary(smart_findings)
+            smart_rules = generate_rules_from_findings(smart_findings)
+            if smart_rules:
+                smart_path = os.path.join(work_dir, "smart_rules.json")
+                import json as _json2
+                with open(smart_path, "w") as _f:
+                    _json2.dump({"version": 1, "rules": smart_rules}, _f, indent=2)
+                print(f"[+] Smart scan rules: {smart_path} ({len(smart_rules)} rules)")
             print()
 
         # Step 2b: Auto-fetch rules and domain list from repository
