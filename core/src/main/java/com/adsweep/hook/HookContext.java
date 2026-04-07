@@ -1,6 +1,8 @@
 package com.adsweep.hook;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 
 /**
  * Strong-typed context for hook callbacks, replacing Easy Rules' Facts.
@@ -28,7 +30,14 @@ public class HookContext {
         if (backupMethod == null) {
             throw new IllegalStateException("No backup method available");
         }
-        return backupMethod.invoke(null, args);
+        if (Modifier.isStatic(targetMethod.getModifiers())) {
+            return backupMethod.invoke(null, args);
+        } else {
+            // Instance method: args[0] is 'this', rest are parameters
+            Object receiver = args[0];
+            Object[] params = Arrays.copyOfRange(args, 1, args.length);
+            return backupMethod.invoke(receiver, params);
+        }
     }
 
     /** Get argument at index (0 = this for instance methods). */

@@ -80,6 +80,7 @@ public class LayerThreeMonitor {
             Method backup = HookEngine.hook(target, callback, callbackMethod);
             if (backup != null) {
                 callback.setBackupMethod(backup);
+                callback.setTargetMethod(target);
                 Log.i(TAG, "Hooked: WebView.loadUrl");
                 return true;
             }
@@ -156,6 +157,7 @@ public class LayerThreeMonitor {
                         Method backup = HookEngine.hook(m, detector, callbackMethod);
                         if (backup != null) {
                             detector.setBackupMethod(backup);
+                            detector.setTargetMethod(m);
                             Log.i(TAG, "Monitoring: " + className + "." + methodName);
                             count++;
                         }

@@ -107,6 +107,7 @@ public class HookManager {
 
             if (backup != null) {
                 callback.setBackupMethod(backup);
+                callback.setTargetMethod(targetMethod);
                 backupMethods.put(key, backup);
                 String condInfo = rule.condition != null ? " [conditional]" : "";
                 Log.i(TAG, "Hooked: " + key + " [" + rule.action + "]" + condInfo);

@@ -1,6 +1,8 @@
 package com.adsweep.hook;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 
 /**
  * Base class for hook callbacks. Subclass this and override handleHook()
@@ -12,9 +14,14 @@ import java.lang.reflect.Method;
 public abstract class HookCallback {
 
     protected Method backupMethod;
+    protected Method targetMethod;
 
     public void setBackupMethod(Method backup) {
         this.backupMethod = backup;
+    }
+
+    public void setTargetMethod(Method target) {
+        this.targetMethod = target;
     }
 
     /**
@@ -32,6 +39,12 @@ public abstract class HookCallback {
     protected Object callOriginal(Object[] args) throws Exception {
         if (backupMethod == null) {
             throw new IllegalStateException("No backup method available");
+        }
+        if (targetMethod != null && !Modifier.isStatic(targetMethod.getModifiers())) {
+            // Instance method: args[0] is 'this', rest are parameters
+            Object receiver = args[0];
+            Object[] params = Arrays.copyOfRange(args, 1, args.length);
+            return backupMethod.invoke(receiver, params);
         }
         return backupMethod.invoke(null, args);
     }
