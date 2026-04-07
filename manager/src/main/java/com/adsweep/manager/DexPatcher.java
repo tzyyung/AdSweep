@@ -65,9 +65,28 @@ public class DexPatcher {
                 idx = smaliContent.indexOf(onCreateMarker);
             }
             if (idx < 0) {
-                Log.e(TAG, "onCreate() not found in " + applicationClass);
-                return false;
-            }
+                // No onCreate() found — generate one
+                Log.i(TAG, "No onCreate() found, generating one...");
+
+                // Extract super class from .super directive
+                String superClass = "Landroid/app/Application;";
+                int superIdx = smaliContent.indexOf(".super ");
+                if (superIdx >= 0) {
+                    int superEnd = smaliContent.indexOf('\n', superIdx);
+                    superClass = smaliContent.substring(superIdx + 7, superEnd).trim();
+                }
+
+                String newOnCreate = "\n.method public onCreate()V\n"
+                        + "    .locals 0\n\n"
+                        + "    invoke-super {p0}, " + superClass + "->onCreate()V\n\n"
+                        + "    invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V\n\n"
+                        + "    return-void\n"
+                        + ".end method\n";
+
+                smaliContent = smaliContent.trim() + "\n" + newOnCreate;
+                java.nio.file.Files.write(smaliFile.toPath(), smaliContent.getBytes());
+                Log.i(TAG, "Generated onCreate() with AdSweep.init()");
+            } else {
 
             // Find .locals or .registers line after method declaration
             int afterMethod = smaliContent.indexOf('\n', idx) + 1;
@@ -89,6 +108,7 @@ public class DexPatcher {
             java.nio.file.Files.write(smaliFile.toPath(), smaliContent.getBytes());
 
             Log.i(TAG, "Patched smali: " + smaliPath);
+            } // end else (existing onCreate)
 
             // Step 3: smali back to DEX
             com.android.tools.smali.smali.SmaliOptions options = new com.android.tools.smali.smali.SmaliOptions();

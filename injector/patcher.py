@@ -175,9 +175,30 @@ def inject_init_call(smali_path: str) -> bool:
         print(f"[+] Injected AdSweep.init() into {smali_path}")
         return True
     else:
-        print(f"[!] Could not find onCreate() in {smali_path}")
-        print("[!] You may need to manually inject the init call")
-        return False
+        # No onCreate() found — generate one that calls super.onCreate() + AdSweep.init()
+        print(f"[*] No onCreate() found, generating one...")
+
+        # Extract super class from .super directive
+        super_match = re.search(r'\.super\s+(L[^;\s]+;)', content)
+        super_class = super_match.group(1) if super_match else "Landroid/app/Application;"
+
+        oncreate_method = f"""
+.method public onCreate()V
+    .locals 0
+
+    invoke-super {{p0}}, {super_class}->onCreate()V
+
+{init_call}
+
+    return-void
+.end method
+"""
+        # Insert before the last line or at the end
+        content = content.rstrip() + "\n" + oncreate_method
+        with open(smali_path, "w") as f:
+            f.write(content)
+        print(f"[+] Generated onCreate() with AdSweep.init() in {smali_path}")
+        return True
 
 
 def copy_payload(decompiled_dir: str) -> bool:

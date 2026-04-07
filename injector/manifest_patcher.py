@@ -12,13 +12,17 @@ import zipfile
 
 # Android resource IDs for attributes we want to modify
 RES_EXTRACT_NATIVE_LIBS = 0x010104ea  # android:extractNativeLibs
+RES_IS_SPLIT_REQUIRED = 0x01010591    # android:isSplitRequired
 
 
 def patch_manifest_in_apk(apk_path: str) -> bool:
     """Patch the binary AndroidManifest.xml inside an APK.
 
-    Currently supports:
+    Supports:
     - Setting extractNativeLibs to true
+    - Setting isSplitRequired to false
+    - Removing requiredSplitTypes attribute
+    - Removing com.android.vending.splits.required meta-data
     """
     try:
         with zipfile.ZipFile(apk_path) as z:
@@ -32,6 +36,25 @@ def patch_manifest_in_apk(apk_path: str) -> bool:
     # Patch extractNativeLibs = true
     if _set_boolean_attribute(data, RES_EXTRACT_NATIVE_LIBS, True):
         print("[+] Set extractNativeLibs=true in binary manifest")
+        modified = True
+
+    # Patch isSplitRequired = false
+    if _set_boolean_attribute(data, RES_IS_SPLIT_REQUIRED, False):
+        print("[+] Set isSplitRequired=false in binary manifest")
+        modified = True
+
+    # Remove requiredSplitTypes string attribute
+    patched = _remove_string_attribute(data, "requiredSplitTypes")
+    if patched is not None:
+        data = patched
+        print("[+] Removed requiredSplitTypes from binary manifest")
+        modified = True
+
+    # Remove splitTypes string attribute
+    patched = _remove_string_attribute(data, "splitTypes")
+    if patched is not None:
+        data = patched
+        print("[+] Removed splitTypes from binary manifest")
         modified = True
 
     if not modified:
@@ -101,6 +124,99 @@ def _find_string_index_for_res_id(data: bytearray, res_id: int) -> int:
             return i
 
     return -1
+
+
+def _remove_string_attribute(data: bytearray, attr_name: str) -> bytearray:
+    """Remove a string attribute by zeroing out its name in the string pool.
+
+    Parses the AXML string pool, finds the attribute name string,
+    and overwrites it with underscores to effectively disable it.
+    """
+    if len(data) < 28:
+        return None
+
+    # Parse header
+    chunk_type = struct.unpack_from('<H', data, 0)[0]
+
+    # Find string pool offset
+    sp_offset = 8  # default for standalone string pool
+    if chunk_type == 0x0003:  # ResXMLTree
+        header_size = struct.unpack_from('<H', data, 2)[0]
+        sp_offset = header_size
+        sp_type = struct.unpack_from('<H', data, sp_offset)[0]
+        if sp_type != 0x0001:
+            return None
+
+    sp_header_size = struct.unpack_from('<H', data, sp_offset + 2)[0]
+    string_count = struct.unpack_from('<I', data, sp_offset + 8)[0]
+    flags = struct.unpack_from('<I', data, sp_offset + 16)[0]
+    strings_start = struct.unpack_from('<I', data, sp_offset + 20)[0]
+
+    is_utf8 = (flags & (1 << 8)) != 0
+    offsets_start = sp_offset + 28
+    str_data_start = sp_offset + strings_start
+
+    for i in range(string_count):
+        str_offset = struct.unpack_from('<I', data, offsets_start + i * 4)[0]
+        abs_offset = str_data_start + str_offset
+
+        s = _read_string_at(data, abs_offset, is_utf8)
+        if s == attr_name:
+            _write_underscores_at(data, abs_offset, is_utf8)
+            return data
+
+    return None
+
+
+def _read_string_at(data: bytearray, offset: int, is_utf8: bool) -> str:
+    """Read a string from the AXML string pool at the given offset."""
+    try:
+        if is_utf8:
+            # char length (1 or 2 bytes)
+            char_len = data[offset] & 0xFF
+            offset += 1
+            if char_len & 0x80:
+                offset += 1
+            # byte length (1 or 2 bytes)
+            byte_len = data[offset] & 0xFF
+            offset += 1
+            if byte_len & 0x80:
+                byte_len = ((byte_len & 0x7F) << 8) | (data[offset] & 0xFF)
+                offset += 1
+            return data[offset:offset + byte_len].decode('utf-8')
+        else:
+            char_len = struct.unpack_from('<H', data, offset)[0]
+            offset += 2
+            chars = struct.unpack_from(f'<{char_len}H', data, offset)
+            return ''.join(chr(c) for c in chars)
+    except Exception:
+        return ""
+
+
+def _write_underscores_at(data: bytearray, offset: int, is_utf8: bool):
+    """Overwrite a string in the pool with underscores (same length)."""
+    try:
+        if is_utf8:
+            char_len = data[offset] & 0xFF
+            skip = 1
+            if char_len & 0x80:
+                skip = 2
+            offset += skip
+            byte_len = data[offset] & 0xFF
+            skip = 1
+            if byte_len & 0x80:
+                byte_len = ((byte_len & 0x7F) << 8) | (data[offset + 1] & 0xFF)
+                skip = 2
+            offset += skip
+            for i in range(byte_len):
+                data[offset + i] = ord('_')
+        else:
+            char_len = struct.unpack_from('<H', data, offset)[0]
+            offset += 2
+            for i in range(char_len):
+                struct.pack_into('<H', data, offset + i * 2, ord('_'))
+    except Exception:
+        pass
 
 
 def _replace_in_zip(zip_path: str, entry_name: str, new_data: bytes):
