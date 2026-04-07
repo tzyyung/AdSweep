@@ -9,7 +9,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 /**
- * Fetches app-specific rules from the adsweep-rules GitHub repository.
+ * Fetches app-specific rules and domain blocklist from the adsweep-rules GitHub repository.
  * Silent on failure — returns null if network is unavailable or rules don't exist.
  */
 public class RuleFetcher {
@@ -59,7 +59,54 @@ public class RuleFetcher {
         }
     }
 
+    /**
+     * Fetch the latest domain blocklist from adsweep-rules repo.
+     * Returns a temp File containing the domain list, or null if not available.
+     */
+    public static File fetchDomains(File cacheDir) {
+        try {
+            String indexJson = download(BASE_URL + "/index.json");
+            if (indexJson == null) return null;
+
+            JSONObject index = new JSONObject(indexJson);
+            JSONObject domains = index.optJSONObject("domains");
+            if (domains == null || !domains.has("url")) {
+                Log.i(TAG, "No domain list in index.json");
+                return null;
+            }
+
+            String domainsUrl = BASE_URL + "/" + domains.getString("url");
+            int expectedCount = domains.optInt("count", 0);
+            Log.i(TAG, "Downloading domain list (" + expectedCount + " domains)...");
+
+            byte[] data = downloadBytes(domainsUrl);
+            if (data == null) return null;
+
+            File domainsFile = new File(cacheDir, "adsweep_domains.txt");
+            try (FileOutputStream fos = new FileOutputStream(domainsFile)) {
+                fos.write(data);
+            }
+
+            Log.i(TAG, "Downloaded domains: " + domainsFile.length() + " bytes");
+            return domainsFile;
+
+        } catch (Exception e) {
+            Log.w(TAG, "Domain fetch failed (using bundled list): " + e.getMessage());
+            return null;
+        }
+    }
+
     private static String download(String urlStr) {
+        byte[] data = downloadBytes(urlStr);
+        if (data == null) return null;
+        try {
+            return new String(data, "UTF-8");
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static byte[] downloadBytes(String urlStr) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(urlStr);
@@ -76,11 +123,11 @@ public class RuleFetcher {
 
             InputStream is = conn.getInputStream();
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
+            byte[] buf = new byte[8192];
             int len;
             while ((len = is.read(buf)) > 0) bos.write(buf, 0, len);
             is.close();
-            return bos.toString("UTF-8");
+            return bos.toByteArray();
 
         } catch (Exception e) {
             Log.d(TAG, "Download failed: " + urlStr + " - " + e.getMessage());

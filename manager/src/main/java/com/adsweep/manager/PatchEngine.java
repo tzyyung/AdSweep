@@ -53,6 +53,7 @@ public class PatchEngine {
             try {
                 // Fetch app-specific rules on background thread
                 File appRules = null;
+                File latestDomains = null;
                 if (packageName != null && !"unknown".equals(packageName)) {
                     progress("Fetching rules for " + packageName + "...");
                     appRules = RuleFetcher.fetch(packageName, context.getCacheDir());
@@ -61,8 +62,17 @@ public class PatchEngine {
                     } else {
                         progress("No app rules, using common rules");
                     }
+
+                    // Fetch latest domain blocklist
+                    progress("Fetching latest domain list...");
+                    latestDomains = RuleFetcher.fetchDomains(context.getCacheDir());
+                    if (latestDomains != null) {
+                        progress("Domain list updated");
+                    } else {
+                        progress("Using bundled domain list");
+                    }
                 }
-                doPatch(inputApk, appRules);
+                doPatch(inputApk, appRules, latestDomains);
             } catch (Throwable t) {
                 Log.e(TAG, "Patch failed", t);
                 String msg = t.getMessage();
@@ -72,7 +82,7 @@ public class PatchEngine {
         }).start();
     }
 
-    private void doPatch(File inputApk, File appRules) throws Exception {
+    private void doPatch(File inputApk, File appRules, File latestDomains) throws Exception {
         File workDir = new File(context.getCacheDir(), "adsweep_work");
         File outputApk = new File(context.getFilesDir(), "patched/patched.apk");
         // Clean old outputs
@@ -103,7 +113,7 @@ public class PatchEngine {
         // Step 3: Build patched APK
         progress("Building patched APK...");
         File unsignedApk = new File(workDir, "unsigned.apk");
-        buildPatchedApk(inputApk, patchedDexes, appRules, unsignedApk);
+        buildPatchedApk(inputApk, patchedDexes, appRules, latestDomains, unsignedApk);
 
         // Step 3b: Patch manifest (remove requiredSplitTypes, set extractNativeLibs)
         progress("Patching manifest...");
@@ -212,7 +222,7 @@ public class PatchEngine {
     }
 
     private void buildPatchedApk(File originalApk, Map<String, File> dexFiles,
-                                  File appRules, File outputApk) throws Exception {
+                                  File appRules, File latestDomains, File outputApk) throws Exception {
         AssetManager assets = context.getAssets();
         Set<String> skipNames = new HashSet<>(dexFiles.keySet());
 
@@ -251,13 +261,26 @@ public class PatchEngine {
                 }
             }
 
-            for (String name : new String[]{"adsweep_rules_common.json", "adsweep_domains.txt"}) {
-                String entryName = "assets/" + name;
-                if (!written.contains(entryName)) {
-                    byte[] data = readAssetBytes(assets, "payload/" + name);
-                    addStoredEntry(zos, entryName, data);
-                    written.add(entryName);
+            // Common rules (always from bundled assets)
+            String rulesEntry = "assets/adsweep_rules_common.json";
+            if (!written.contains(rulesEntry)) {
+                byte[] data = readAssetBytes(assets, "payload/adsweep_rules_common.json");
+                addStoredEntry(zos, rulesEntry, data);
+                written.add(rulesEntry);
+            }
+
+            // Domain list: prefer downloaded latest, fallback to bundled
+            String domainsEntry = "assets/adsweep_domains.txt";
+            if (!written.contains(domainsEntry)) {
+                if (latestDomains != null && latestDomains.exists()) {
+                    addStoredEntryFromFile(zos, domainsEntry, latestDomains);
+                    Log.i(TAG, "Using downloaded domain list: " + latestDomains.length() + " bytes");
+                } else {
+                    byte[] data = readAssetBytes(assets, "payload/adsweep_domains.txt");
+                    addStoredEntry(zos, domainsEntry, data);
+                    Log.i(TAG, "Using bundled domain list");
                 }
+                written.add(domainsEntry);
             }
 
             if (appRules != null && appRules.exists()) {

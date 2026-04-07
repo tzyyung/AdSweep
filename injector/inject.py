@@ -21,7 +21,7 @@ import tempfile
 from config import validate_tools
 from decompiler import decompile
 from scanner import scan, save_report, generate_suggested_rules, save_suggested_rules
-from rule_fetcher import fetch_rules_for_package, get_package_name_from_apk
+from rule_fetcher import fetch_rules_for_package, fetch_domains, get_package_name_from_apk
 from patcher import patch
 from packager import package_apk
 
@@ -92,7 +92,7 @@ def main():
                 print(f"[*] Use these as app rules: --rules {suggested_path}")
             print()
 
-        # Step 2b: Auto-fetch rules from repository
+        # Step 2b: Auto-fetch rules and domain list from repository
         if args.rules_url and not args.rules:
             pkg = get_package_name_from_apk(decompiled_dir)
             if pkg:
@@ -104,6 +104,15 @@ def main():
                     print(f"[+] Downloaded rules to {fetched}")
                 else:
                     print(f"[*] No rules found, using common rules only")
+
+                # Download latest domain blocklist
+                domains_file = fetch_domains(repo_url)
+                if domains_file:
+                    assets_dir = os.path.join(decompiled_dir, "assets")
+                    os.makedirs(assets_dir, exist_ok=True)
+                    shutil.copy2(domains_file, os.path.join(assets_dir, "adsweep_domains.txt"))
+                    print(f"[+] Updated domain list from repository")
+                    os.unlink(domains_file)
             else:
                 print("[!] Could not detect package name")
 

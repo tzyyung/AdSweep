@@ -1,5 +1,5 @@
 """
-AdSweep Rule Fetcher — Download rules from the community rule repository.
+AdSweep Rule Fetcher — Download rules and domain blocklist from the community rule repository.
 
 Supports:
   --rules-url auto     → auto-detect package name, fetch from default repo
@@ -40,6 +40,26 @@ def fetch_rules_for_package(package_name: str, repo_url: str = None) -> str:
     # Fallback: try direct path
     rules_url = f"{repo}/apps/{package_name}/rules.json"
     return _download_to_temp(rules_url)
+
+
+def fetch_domains(repo_url: str = None) -> str:
+    """
+    Fetch the latest domain blocklist from the rule repository.
+    Returns path to downloaded domains file, or None if not available.
+    """
+    repo = repo_url or DEFAULT_REPO
+
+    index = _fetch_json(f"{repo}/index.json")
+    if index and "domains" in index:
+        domains_info = index["domains"]
+        domains_url = f"{repo}/{domains_info.get('url', 'domains/adsweep_domains.txt')}"
+        count = domains_info.get("count", "?")
+        print(f"[*] Downloading domain blocklist ({count} domains)...")
+        return _download_to_temp_raw(domains_url, suffix=".txt")
+
+    # Fallback: try direct path
+    domains_url = f"{repo}/domains/adsweep_domains.txt"
+    return _download_to_temp_raw(domains_url, suffix=".txt")
 
 
 def get_package_name_from_apk(decompiled_dir: str) -> str:
@@ -91,7 +111,7 @@ def _fetch_json(url: str):
 
 
 def _download_to_temp(url: str) -> str:
-    """Download a file to a temp path. Returns path or None."""
+    """Download a JSON file to a temp path. Returns path or None."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "AdSweep/1.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -103,4 +123,20 @@ def _download_to_temp(url: str) -> str:
             tmp.close()
             return tmp.name
     except Exception as e:
+        return None
+
+
+def _download_to_temp_raw(url: str, suffix: str = ".txt") -> str:
+    """Download a raw file to a temp path. Returns path or None."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "AdSweep/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+            if len(data) < 100:
+                return None
+            tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, prefix="adsweep_domains_")
+            tmp.write(data)
+            tmp.close()
+            return tmp.name
+    except Exception:
         return None
