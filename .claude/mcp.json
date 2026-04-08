@@ -2,7 +2,7 @@
   "mcpServers": {
     "adsweep": {
       "command": "python3",
-      "args": ["/Users/anson/incrte/AdSweep/mcp/server.py"],
+      "args": ["./mcp/server.py"],
       "env": {}
     }
   }

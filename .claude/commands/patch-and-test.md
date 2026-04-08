@@ -12,7 +12,7 @@
 ## Step 1: 注入
 
 ```bash
-cd /Users/anson/incrte/AdSweep/injector
+cd "$(git rev-parse --show-toplevel)/injector"
 python3 inject.py --apk <apk_path> --rules rules/<rules_name>.json
 ```
 

@@ -261,7 +261,7 @@ public class ApkBuilderTest {
     public void testBuild_withRealApk() throws Exception {
         // Test with real Money Manager APK if available
         String realApkPath = System.getProperty("test.apk.path",
-                "/Users/anson/incrte/expensetrackerapp/apk_output/base.apk");
+                "apk_output/base.apk");
         File realApk = new File(realApkPath);
         if (!realApk.exists()) {
             System.out.println("Real APK not found, skipping: " + realApkPath);

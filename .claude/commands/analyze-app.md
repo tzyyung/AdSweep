@@ -14,7 +14,7 @@
 ## Step 2: Smart Scan
 
 ```bash
-cd /Users/anson/incrte/AdSweep/injector && python3 -c "
+cd "$(git rev-parse --show-toplevel)/injector" && python3 -c "
 from scanner import scan, generate_suggested_rules
 report = scan('$ARGUMENTS')
 suggested = generate_suggested_rules('$ARGUMENTS', report)
