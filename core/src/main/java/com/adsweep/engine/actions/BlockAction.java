@@ -13,12 +13,17 @@ public class BlockAction implements RuleAction {
     private final String description;
 
     public BlockAction(String actionType, String description) {
+        this(actionType, description, null);
+    }
+
+    public BlockAction(String actionType, String description, String customValue) {
         this.description = description;
         switch (actionType) {
             case "BLOCK_RETURN_TRUE":  this.returnValue = Boolean.TRUE; break;
             case "BLOCK_RETURN_FALSE": this.returnValue = Boolean.FALSE; break;
             case "BLOCK_RETURN_ZERO":  this.returnValue = 0; break;
             case "BLOCK_RETURN_EMPTY_STRING": this.returnValue = ""; break;
+            case "BLOCK_RETURN_STRING": this.returnValue = customValue != null ? customValue : ""; break;
             default: this.returnValue = null; break;
         }
     }

@@ -42,7 +42,7 @@ public class RuleParser {
         }
 
         // Parse action
-        RuleAction action = parseAction(rule.action, desc);
+        RuleAction action = parseAction(rule.action, desc, rule.returnValue);
 
         // ElseAction is always PassThrough (call original)
         RuleAction elseAction = new PassThroughAction();
@@ -106,7 +106,7 @@ public class RuleParser {
         return list;
     }
 
-    private RuleAction parseAction(String action, String description) {
+    private RuleAction parseAction(String action, String description, String returnValue) {
         if (action == null) action = "BLOCK_RETURN_VOID";
 
         if (action.startsWith("CALL_AND_")) {
@@ -116,7 +116,7 @@ public class RuleParser {
         } else if (action.equals("PASS_THROUGH")) {
             return new PassThroughAction();
         } else {
-            return new BlockAction(action, description);
+            return new BlockAction(action, description, returnValue);
         }
     }
 

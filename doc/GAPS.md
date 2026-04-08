@@ -165,13 +165,19 @@ graph TD
     B --> F["WebView + shouldInterceptRequest<br>→ 可以 Hook shouldInterceptRequest"]
 ```
 
-**建議：** 優先 Hook `WebViewClient.shouldInterceptRequest`（比 `loadUrl` 更全面）
+**目前實作：**
+- `WebView.loadUrl` — 攔截已知廣告 URL pattern（doubleclick、googlesyndication 等）
+- `WebViewClient.onPageFinished` — 頁面載入後注入 CSS/JS 隱藏廣告 DOM 元素（**已實作**）
+
+後者對 **WebView 混合式 app**（如 AccuWeather）特別有效：這類 app 的廣告是 server-side 嵌入 HTML 的，
+client-side SDK hook 無法攔截，必須在 DOM 層級注入 CSS 隱藏廣告容器。
 
 | 方案 | 優點 | 缺點 |
 |------|------|------|
-| Hook shouldInterceptRequest（推薦） | 攔截所有子資源請求 | 需要 WebViewClient 存在 |
-| Hook loadUrl（目前） | 簡單 | 只攔截主頁載入 |
-| 兩者都 Hook | 最全面 | 可能重複攔截 |
+| Hook shouldInterceptRequest | 攔截所有子資源請求 | 需要 WebViewClient 存在 |
+| Hook loadUrl（已實作） | 簡單，攔截廣告 URL | 只攔截主頁載入 |
+| Hook onPageFinished + CSS/JS 注入（已實作） | 對付 server-side 嵌入廣告 | 需要知道 CSS selector |
+| 三者都 Hook | 最全面 | 可能重複攔截 |
 
 ### 8. 加固 App
 

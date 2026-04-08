@@ -197,6 +197,7 @@ graph TB
 
     subgraph Layer3["Layer 3 — 行為偵測（Runtime）"]
         L3A["WebView.loadUrl"] -->|廣告 URL| L3B[攔截 + 回報]
+        L3H["WebViewClient.onPageFinished"] -->|頁面載入完成| L3I["注入 CSS/JS 隱藏廣告 DOM"]
         L3C["AdListener.onAdLoaded"] -->|廣告載入| L3D[記錄 + 回報用戶]
         L3D --> L3E{用戶判斷}
         L3E -->|是廣告| L3F[建立規則]

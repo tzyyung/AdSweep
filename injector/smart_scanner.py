@@ -308,8 +308,9 @@ def smart_scan(decompiled_dir: str, verbose: bool = False) -> List[SmartFinding]
 
 def _get_class_name(smali_path: str, smali_dirs: List[str]) -> str:
     """Extract class name from smali file path."""
-    for sd in smali_dirs:
-        if smali_path.startswith(sd):
+    # Sort by longest path first to avoid 'smali' matching 'smali_classes2'
+    for sd in sorted(smali_dirs, key=len, reverse=True):
+        if smali_path.startswith(sd + os.sep) or smali_path.startswith(sd + "/"):
             rel = os.path.relpath(smali_path, sd)
             return rel.replace("/", ".").replace(".smali", "")
     return os.path.basename(smali_path).replace(".smali", "")

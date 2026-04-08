@@ -88,9 +88,12 @@ python inject.py --apk app.apk --rules work/suggested_rules.json
 | `paramTypes` | 否 | 方法參數型別陣列。省略時匹配同名的第一個方法 |
 | `action` | 是 | 攔截行為（見下表） |
 | `enabled` | 否 | 是否啟用（預設 true） |
-| `source` | 否 | 來源：BUILTIN / MANUAL / LAYER2_SCAN / LAYER3_USER |
+| `source` | 否 | 來源：BUILTIN / MANUAL / LAYER2_SCAN / LAYER3_USER / APP_SPECIFIC |
 | `sdkName` | 否 | 人類可讀的 SDK 名稱 |
 | `notes` | 否 | 備註 |
+| `returnValue` | 否 | 搭配 `BLOCK_RETURN_STRING` 使用，指定自訂回傳字串 |
+| `priority` | 否 | 優先順序，數字越大越先處理（預設 50） |
+| `condition` | 否 | 條件式規則，JSON 物件（見 RULE_ENGINE.md） |
 
 ### Action 類型
 
@@ -102,6 +105,7 @@ graph LR
     A --> E["BLOCK_RETURN_FALSE → false"]
     A --> F["BLOCK_RETURN_ZERO → 0"]
     A --> G["BLOCK_RETURN_EMPTY_STRING → 空字串"]
+    A --> H["BLOCK_RETURN_STRING → 自訂字串"]
 ```
 
 | Action | 回傳值 | 適用場景 |
@@ -112,6 +116,44 @@ graph LR
 | `BLOCK_RETURN_FALSE` | false | 繞過檢查（簽名驗證） |
 | `BLOCK_RETURN_ZERO` | 0 | 回傳數值的方法 |
 | `BLOCK_RETURN_EMPTY_STRING` | "" | 回傳字串的方法（裝置 ID） |
+| `BLOCK_RETURN_STRING` | 自訂字串 | 需搭配 `returnValue` 欄位，用於偽裝訂閱狀態等 |
+
+### App-Specific 規則範例
+
+針對特定 app 的混淆程式碼，可建立 app-specific 規則：
+
+```json
+{
+  "version": 3,
+  "rules": [
+    {
+      "id": "aw-free-check-b",
+      "className": "a9.b",
+      "methodName": "b",
+      "paramTypes": ["java.util.Set"],
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "AccuWeather Free User Check",
+      "notes": "Hook 訂閱狀態檢查方法，回傳 false 偽裝為付費用戶"
+    },
+    {
+      "id": "aw-mobileads-init",
+      "className": "com.google.android.gms.ads.MobileAds",
+      "methodName": "a",
+      "paramTypes": ["android.content.Context", "Ea.c"],
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "Google MobileAds Init (obfuscated)",
+      "notes": "MobileAds.initialize() 被 R8 混淆為 a()，阻擋 SDK 初始化"
+    }
+  ]
+}
+```
+
+> **注意：** 混淆後的 class/method 名稱（如 `a9.b`、`Ea.c`）僅適用於特定版本的 APK。
+> App 更新後混淆 mapping 會改變，需要重新逆向分析。
 
 ## 寫規則的注意事項
 

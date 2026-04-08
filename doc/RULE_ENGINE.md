@@ -636,7 +636,10 @@ classDiagram
 ```java
 /** 無條件攔截（現有行為） */
 public class BlockAction implements RuleAction {
-    private final Object returnValue;  // null, true, false, 0, ""
+    private final Object returnValue;  // null, true, false, 0, "", 自訂字串
+
+    // 支援 BLOCK_RETURN_STRING：透過 Rule.returnValue 指定自訂字串
+    // 例：偽裝訂閱狀態 → returnValue = "one_year_remove_ads_subscription"
 
     public Object execute(HookContext ctx) {
         return returnValue;

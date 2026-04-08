@@ -1,8 +1,11 @@
 package com.adsweep.hook;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import com.adsweep.reporter.DetectionEvent;
 import com.adsweep.reporter.FloatingReporter;
@@ -64,7 +67,10 @@ public class LayerThreeMonitor {
         // Monitor 1: WebView.loadUrl — detect ad URLs
         installed += hookWebViewLoadUrl() ? 1 : 0;
 
-        // Monitor 2: Ad callback methods — detect when ads are loaded
+        // Monitor 2: WebViewClient.onPageFinished — inject ad-hiding CSS/JS
+        installed += hookWebViewOnPageFinished() ? 1 : 0;
+
+        // Monitor 3: Ad callback methods — detect when ads are loaded
         installed += hookAdCallbacks();
 
         Log.i(TAG, "Layer 3: " + installed + " monitors installed");
@@ -133,6 +139,104 @@ public class LayerThreeMonitor {
                 return end > start ? url.substring(start, end) : url.substring(start);
             } catch (Exception e) {
                 return null;
+            }
+        }
+    }
+
+    // --- WebViewClient.onPageFinished — inject ad-hiding CSS/JS ---
+
+    private boolean hookWebViewOnPageFinished() {
+        try {
+            Method target = WebViewClient.class.getMethod("onPageFinished",
+                    WebView.class, String.class);
+            PageFinishedCallback callback = new PageFinishedCallback();
+            Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
+            Method backup = HookEngine.hook(target, callback, callbackMethod);
+            if (backup != null) {
+                callback.setBackupMethod(backup);
+                callback.setTargetMethod(target);
+                Log.i(TAG, "Hooked: WebViewClient.onPageFinished (ad CSS injection)");
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to hook WebViewClient.onPageFinished", e);
+        }
+        return false;
+    }
+
+    static class PageFinishedCallback extends HookCallback {
+        // CSS to hide Google Ads containers + common ad patterns
+        private static final String AD_BLOCK_JS =
+                "(function(){" +
+                "var css='" +
+                // Google Ad Manager / DFP
+                "[data-google-query-id]{display:none!important;height:0!important;overflow:hidden!important}" +
+                "iframe[id*=\"google_ads\"]{display:none!important}" +
+                "iframe[src*=\"doubleclick\"]{display:none!important}" +
+                "iframe[src*=\"googlesyndication\"]{display:none!important}" +
+                // Common ad container patterns
+                "div[class*=\"ad-container\"]{display:none!important}" +
+                "div[class*=\"ad-slot\"]{display:none!important}" +
+                "div[class*=\"ad-wrapper\"]{display:none!important}" +
+                "div[class*=\"adsbygoogle\"]{display:none!important}" +
+                // AccuWeather specific - native ad + Remove Ads button
+                "div[class*=\"native-ad\"]{display:none!important}" +
+                "div[class*=\"remove-ads\"]{display:none!important}" +
+                "a[href*=\"remove-ads\"]{display:none!important}" +
+                "a[href*=\"subscription\"]{display:none!important}" +
+                "';" +
+                "var s=document.createElement('style');" +
+                "s.textContent=css;" +
+                "(document.head||document.documentElement).appendChild(s);" +
+                // Also remove iframes matching ad patterns
+                "document.querySelectorAll('iframe').forEach(function(f){" +
+                "var src=f.src||'';" +
+                "if(src.indexOf('doubleclick')>=0||src.indexOf('googlesyndication')>=0||" +
+                "src.indexOf('googleads')>=0||src.indexOf('adservice')>=0){" +
+                "f.remove();" +
+                "}" +
+                "});" +
+                // MutationObserver for dynamically loaded ads
+                "new MutationObserver(function(m){" +
+                "m.forEach(function(r){" +
+                "r.addedNodes.forEach(function(n){" +
+                "if(n.nodeType===1){" +
+                "if(n.getAttribute&&n.getAttribute('data-google-query-id')){n.remove();return;}" +
+                "if(n.tagName==='IFRAME'&&(n.src||'').match(/doubleclick|googlesyndication|googleads/)){n.remove();}" +
+                "}" +
+                "});" +
+                "});" +
+                "}).observe(document.body||document.documentElement,{childList:true,subtree:true});" +
+                "})()";
+
+        @Override
+        public Object handleHook(Object[] args) {
+            try {
+                // Call original onPageFinished first
+                Object result = callOriginal(args);
+
+                // args[0]=WebViewClient(this), args[1]=WebView, args[2]=url
+                if (args.length >= 2 && args[1] instanceof WebView) {
+                    WebView wv = (WebView) args[1];
+                    String url = args.length >= 3 && args[2] instanceof String ? (String) args[2] : "";
+
+                    // Only inject on non-ad pages (avoid injecting into ad iframes)
+                    if (!AD_URL_PATTERN.matcher(url).find()) {
+                        try {
+                            wv.evaluateJavascript(AD_BLOCK_JS, null);
+                            Log.d(TAG, "Injected ad-hiding CSS/JS into WebView");
+                        } catch (Exception e) {
+                            // Fallback for older APIs
+                            try {
+                                wv.loadUrl("javascript:void(" + AD_BLOCK_JS + ")");
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+
+                return result;
+            } catch (Exception e) {
+                try { return callOriginal(args); } catch (Exception ex) { return null; }
             }
         }
     }

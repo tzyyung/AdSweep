@@ -18,6 +18,7 @@ public class Rule {
     public String source;       // BUILTIN, LAYER2_SCAN, LAYER3_USER, MANUAL
     public String sdkName;
     public String notes;
+    public String returnValue;  // Custom return value for BLOCK_RETURN_STRING
     public int priority;        // Higher = processed first (default 50)
     public JSONObject condition; // Optional: condition for conditional rules
 
@@ -38,6 +39,7 @@ public class Rule {
         rule.sdkName = json.optString("sdkName", "");
         rule.notes = json.optString("notes", "");
 
+        rule.returnValue = json.optString("returnValue", null);
         rule.priority = json.optInt("priority", 50);
         if (json.has("condition")) {
             rule.condition = json.getJSONObject("condition");

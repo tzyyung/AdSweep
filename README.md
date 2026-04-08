@@ -96,7 +96,7 @@ graph TB
         I --> I1["規則引擎<br>RuleCondition → RuleAction"]
         I1 --> J[Layer 1: SDK Hook]
         I1 --> J2["Network: 域名攔截<br>99K domains"]
-        I --> K[Layer 3: 行為偵測]
+        I --> K["Layer 3: 行為偵測 + WebView CSS/JS 注入"]
         J --> L[HookEngine JNI]
         J2 --> L
         K --> L
