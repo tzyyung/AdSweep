@@ -56,9 +56,10 @@ public class RuleStore {
         // App rules take priority (can override common rules)
         for (Rule rule : appRules) {
             String key = rule.className + "." + rule.methodName;
+            // Always mark as seen so disabled app rules block common rules
+            seen.add(key);
             if (rule.enabled && !whitelist.contains(key)) {
                 active.add(rule);
-                seen.add(key);
             }
         }
 

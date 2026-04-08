@@ -106,7 +106,7 @@ def find_smali_file(decompiled_dir: str, class_name: str) -> str:
 
 
 def create_stub_application(decompiled_dir: str) -> str:
-    """Create a minimal Application subclass that calls AdSweep.init()."""
+    """Create a minimal Application subclass that calls AdSweep.init() via reflection."""
     smali_dir = os.path.join(decompiled_dir, "smali", "com", "adsweep")
     os.makedirs(smali_dir, exist_ok=True)
 
@@ -122,9 +122,41 @@ def create_stub_application(decompiled_dir: str) -> str:
 .end method
 
 .method public onCreate()V
-    .locals 0
+    .locals 6
+
     invoke-super {p0}, Landroid/app/Application;->onCreate()V
-    invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V
+
+    const/4 v0, 0x1
+
+    :try_adsweep_start
+    const-string v1, "com.adsweep.AdSweep"
+    invoke-static {v1}, Ljava/lang/Class;->forName(Ljava/lang/String;)Ljava/lang/Class;
+    move-result-object v1
+
+    const-string v2, "init"
+
+    new-array v3, v0, [Ljava/lang/Class;
+    const/4 v4, 0x0
+    const-class v5, Landroid/content/Context;
+    aput-object v5, v3, v4
+
+    invoke-virtual {v1, v2, v3}, Ljava/lang/Class;->getMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
+    move-result-object v1
+
+    const/4 v2, 0x0
+    new-array v3, v0, [Ljava/lang/Object;
+    aput-object p0, v3, v4
+
+    invoke-virtual {v1, v2, v3}, Ljava/lang/reflect/Method;->invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;
+    :try_adsweep_end
+    .catch Ljava/lang/Exception; {:try_adsweep_start .. :try_adsweep_end} :adsweep_fail
+    goto :adsweep_done
+
+    :adsweep_fail
+    move-exception v1
+
+    :adsweep_done
+
     return-void
 .end method
 """)
@@ -151,28 +183,82 @@ def update_manifest_application(manifest_path: str, app_class: str) -> bool:
 
 
 def inject_init_call(smali_path: str) -> bool:
-    """Inject AdSweep.init() call into the Application's onCreate method."""
+    """Inject AdSweep.init() call into the Application's onCreate method.
+
+    Uses reflection to call AdSweep.init(Context) so we don't add a direct
+    method reference to the host DEX — avoids 65536 method limit overflow
+    on apps whose primary classes.dex is already at capacity.
+    """
     with open(smali_path, "r") as f:
         content = f.read()
 
-    init_call = "    invoke-static {p0}, Lcom/adsweep/AdSweep;->init(Landroid/content/Context;)V"
-
-    # Check if already injected
-    if "Lcom/adsweep/AdSweep;->init" in content:
+    # Check if already injected (either direct or reflection style)
+    if "Lcom/adsweep/AdSweep;" in content or "com.adsweep.AdSweep" in content:
         print("[*] AdSweep.init() already injected, skipping")
         return True
 
+    # Reflection-based init call — only references java.lang.* classes
+    # which are already in every DEX's method table.
+    # Equivalent to: Class.forName("com.adsweep.AdSweep")
+    #                  .getMethod("init", Context.class)
+    #                  .invoke(null, this);
+    init_call = """\
+    const/4 v0, 0x1
+
+    :try_adsweep_start
+    const-string v1, "com.adsweep.AdSweep"
+    invoke-static {v1}, Ljava/lang/Class;->forName(Ljava/lang/String;)Ljava/lang/Class;
+    move-result-object v1
+
+    const-string v2, "init"
+
+    new-array v3, v0, [Ljava/lang/Class;
+    const/4 v4, 0x0
+    const-class v5, Landroid/content/Context;
+    aput-object v5, v3, v4
+
+    invoke-virtual {v1, v2, v3}, Ljava/lang/Class;->getMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
+    move-result-object v1
+
+    const/4 v2, 0x0
+    new-array v3, v0, [Ljava/lang/Object;
+    aput-object p0, v3, v4
+
+    invoke-virtual {v1, v2, v3}, Ljava/lang/reflect/Method;->invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;
+    :try_adsweep_end
+    .catch Ljava/lang/Exception; {:try_adsweep_start .. :try_adsweep_end} :adsweep_fail
+    goto :adsweep_done
+
+    :adsweep_fail
+    move-exception v1
+
+    :adsweep_done"""
+
     # Find onCreate method and inject after .locals or .registers
-    oncreate_pattern = r"(\.method\s+public\s+onCreate\(\)V\s*\n(?:.*\n)*?\s*\.(?:locals|registers)\s+\d+)"
+    # Support modifiers like "public", "public final", "protected", etc.
+    oncreate_pattern = r"(\.method\s+(?:public|protected)\s+(?:final\s+)?onCreate\(\)V\s*\n(?:.*\n)*?\s*\.(?:locals|registers)\s+(\d+))"
     match = re.search(oncreate_pattern, content)
 
     if match:
         injection_point = match.end()
+        # Ensure enough registers (need v0-v5, so at least .locals 6)
+        current_locals = int(match.group(2))
+        if current_locals < 6:
+            old_decl = match.group(0)
+            new_decl = re.sub(r'\.locals\s+\d+', '.locals 6', old_decl)
+            new_decl = re.sub(r'\.registers\s+(\d+)',
+                              lambda m: f'.registers {max(int(m.group(1)), int(m.group(1)) + 6 - current_locals)}',
+                              new_decl)
+            content = content.replace(old_decl, new_decl)
+            # Re-find injection point after replacement
+            match = re.search(oncreate_pattern, content)
+            injection_point = match.end()
+
         content = content[:injection_point] + "\n\n" + init_call + "\n" + content[injection_point:]
 
         with open(smali_path, "w") as f:
             f.write(content)
-        print(f"[+] Injected AdSweep.init() into {smali_path}")
+        print(f"[+] Injected AdSweep.init() (reflection) into {smali_path}")
         return True
     else:
         # No onCreate() found — generate one that calls super.onCreate() + AdSweep.init()
@@ -184,7 +270,7 @@ def inject_init_call(smali_path: str) -> bool:
 
         oncreate_method = f"""
 .method public onCreate()V
-    .locals 0
+    .locals 6
 
     invoke-super {{p0}}, {super_class}->onCreate()V
 
@@ -197,7 +283,7 @@ def inject_init_call(smali_path: str) -> bool:
         content = content.rstrip() + "\n" + oncreate_method
         with open(smali_path, "w") as f:
             f.write(content)
-        print(f"[+] Generated onCreate() with AdSweep.init() in {smali_path}")
+        print(f"[+] Generated onCreate() with AdSweep.init() (reflection) in {smali_path}")
         return True
 
 

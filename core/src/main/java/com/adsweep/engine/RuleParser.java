@@ -1,9 +1,12 @@
 package com.adsweep.engine;
 
+import android.content.Context;
+
 import com.adsweep.engine.actions.BlockAction;
 import com.adsweep.engine.actions.CallAndModifyAction;
 import com.adsweep.engine.actions.MonitorAction;
 import com.adsweep.engine.actions.PassThroughAction;
+import com.adsweep.engine.actions.SpoofSignatureAction;
 import com.adsweep.engine.conditions.AlwaysTrueCondition;
 import com.adsweep.engine.conditions.ArgContainsCondition;
 import com.adsweep.engine.conditions.ArgRegexCondition;
@@ -24,9 +27,11 @@ import java.util.List;
 public class RuleParser {
 
     private final DomainMatcher domainMatcher;
+    private final Context context;
 
-    public RuleParser(DomainMatcher domainMatcher) {
+    public RuleParser(DomainMatcher domainMatcher, Context context) {
         this.domainMatcher = domainMatcher;
+        this.context = context;
     }
 
     /** Parse a Rule JSON object into an executable HookRule. */
@@ -109,7 +114,9 @@ public class RuleParser {
     private RuleAction parseAction(String action, String description, String returnValue) {
         if (action == null) action = "BLOCK_RETURN_VOID";
 
-        if (action.startsWith("CALL_AND_")) {
+        if (action.equals("SPOOF_SIGNATURE")) {
+            return new SpoofSignatureAction(context);
+        } else if (action.startsWith("CALL_AND_")) {
             return new CallAndModifyAction(action, description);
         } else if (action.equals("MONITOR_ONLY")) {
             return new MonitorAction(description);

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "callapp-integrity-bypass",
+      "className": "oa0$a$a",
+      "methodName": "a",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "CallApp Integrity",
+      "description": "Bypass SHA1 signature verification (server-side tamper detection)"
+    },
+    {
+      "id": "callapp-whitelist-url",
+      "className": "java.net.URL",
+      "methodName": "openConnection",
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": false,
+      "source": "APP_SPECIFIC",
+      "sdkName": "Whitelist",
+      "description": "Disable URL blocking (app needs network)"
+    }
+  ]
+}

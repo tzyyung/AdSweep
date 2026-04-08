@@ -154,6 +154,71 @@ graph TD
     style F fill:#4CAF50,color:#fff
 ```
 
+## 通用簽名繞過（SPOOF_SIGNATURE）
+
+APK 重簽名後，App 的 tamper detection 會偵測到簽名不符。AdSweep 提供通用的簽名繞過機制：
+
+```mermaid
+graph TD
+    A["inject.py 注入時"] --> B["從原始 APK 提取簽名"]
+    B --> B1["META-INF/*.RSA (v1)"]
+    B --> B2["apksigner --print-certs-pem (v2/v3)"]
+    B1 --> C["存為 assets/adsweep_original_sig.bin"]
+    B2 --> C
+
+    D["Runtime: App 呼叫 getPackageInfo()"] --> E["SpoofSignatureAction"]
+    E --> F["呼叫原始方法取得 PackageInfo"]
+    F --> G{"是自己的 package<br>+ 要求 signatures?"}
+    G -->|是| H["用原始簽名替換 pi.signatures"]
+    G -->|否| I["原樣返回"]
+
+    style H fill:#4CAF50,color:#fff
+```
+
+**兩層簽名繞過策略：**
+
+| 層級 | 機制 | 適用 |
+|------|------|------|
+| 通用（common rule） | `SPOOF_SIGNATURE` hook `getPackageInfo()` | 所有用 PackageManager 驗簽的 App |
+| App-specific | Hook 具體的驗證方法（如 `oa0$a$a.a()`） | 有 server-side 或自訂驗證的 App |
+
+### CallApp 案例（雙層驗證）
+
+CallApp 使用兩層驗證：OS 層 `getPackageInfo()` + server-side `NLLAppsSHACheckAPIService`。
+逆向工程過程中踩的坑和解法：
+
+| 嘗試 | 結果 | 原因 |
+|------|------|------|
+| 只用 `SPOOF_SIGNATURE` | tamper 警告仍在 | App 有 server-side SHA 驗證 |
+| Hook abstract `oa0$a.a()` | hook 安裝但不觸發 | LSPlant 不攔截 subclass 的具體實現 |
+| Hook concrete `oa0$a$a.a()` | **✅ 成功** | **直接 hook FailedSHA1Verification 的具體類** |
+
+### Reflection-based Init 注入
+
+```mermaid
+graph TD
+    A["直接引用 AdSweep.init()"] -->|"增加 method ref"| B["classes.dex 65537 → 溢出"]
+    C["Reflection: Class.forName + getMethod + invoke"] -->|"零新 ref"| D["classes.dex 不變 ✓"]
+
+    style B fill:#f44336,color:#fff
+    style D fill:#4CAF50,color:#fff
+```
+
+CallApp 的 classes.dex 已有 65536/65536 method references，直接引用 `AdSweep.init()` 會溢出。
+改用 reflection 呼叫：只引用 `java.lang.Class`、`java.lang.reflect.Method` 等 framework 類，不新增 method reference。
+
+### apktool Obfuscated Resource 修復
+
+```mermaid
+graph TD
+    A["apktool 3.x rebuild"] -->|"丟失 obfuscated filenames"| B["279 個 res/ 檔案遺失"]
+    B --> C["App crash: Resource not found"]
+    D["_restore_missing_entries()"] -->|"從原始 APK 補回"| E["所有 entry 完整 ✓"]
+
+    style C fill:#f44336,color:#fff
+    style E fill:#4CAF50,color:#fff
+```
+
 ## On-Device Patching 設計演進
 
 ### DexPatcher 演進

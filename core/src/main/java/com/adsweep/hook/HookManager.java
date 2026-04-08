@@ -45,7 +45,7 @@ public class HookManager {
 
         // Load domain list for URL_MATCHES conditions
         domainMatcher = DomainMatcher.fromAsset(appContext, DOMAINS_ASSET);
-        ruleParser = new RuleParser(domainMatcher);
+        ruleParser = new RuleParser(domainMatcher, appContext);
 
         // Layer 1: Hook all known SDK methods found in this app
         List<Rule> rules = ruleStore.getActiveRules();
@@ -60,7 +60,21 @@ public class HookManager {
             if ("WEBVIEW".equals(rule.className)) continue; // handled by UserScriptEngine
 
             try {
-                Class<?> targetClass = cl.loadClass(rule.className);
+                Class<?> targetClass;
+
+                // Special case: SPOOF_SIGNATURE needs the concrete PackageManager class
+                // which is a hidden API (ApplicationPackageManager) — resolve from runtime
+                if ("SPOOF_SIGNATURE".equals(rule.action)
+                        && rule.className.contains("PackageManager")) {
+                    targetClass = appContext.getPackageManager().getClass();
+                } else {
+                    try {
+                        targetClass = cl.loadClass(rule.className);
+                    } catch (ClassNotFoundException e) {
+                        targetClass = Class.forName(rule.className);
+                    }
+                }
+
                 Method targetMethod = resolveMethod(targetClass, rule.methodName, rule.paramTypes);
 
                 if (targetMethod == null) {
@@ -91,6 +105,7 @@ public class HookManager {
         HookCallback callback;
         boolean useRuleEngine = rule.condition != null
                 || "MONITOR_ONLY".equals(rule.action)
+                || "SPOOF_SIGNATURE".equals(rule.action)
                 || (rule.action != null && rule.action.startsWith("CALL_AND_"));
         if (useRuleEngine && ruleParser != null) {
             // Conditional, monitor, or call-and-modify → use rule engine
@@ -111,7 +126,9 @@ public class HookManager {
                 callback.setTargetMethod(targetMethod);
                 backupMethods.put(key, backup);
                 String condInfo = rule.condition != null ? " [conditional]" : "";
-                Log.i(TAG, "Hooked: " + key + " [" + rule.action + "]" + condInfo);
+                String desc = (rule.description != null && !rule.description.isEmpty())
+                        ? " — " + rule.description : "";
+                Log.i(TAG, "Hooked: " + key + " [" + rule.action + "]" + condInfo + desc);
                 return true;
             } else {
                 Log.w(TAG, "Failed to hook: " + key);

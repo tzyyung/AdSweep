@@ -24,7 +24,7 @@ from scanner import scan, save_report, generate_suggested_rules, save_suggested_
 from smart_scanner import smart_scan, print_summary, generate_rules_from_findings
 from rule_fetcher import fetch_rules_for_package, fetch_domains, get_package_name_from_apk
 from patcher import patch
-from packager import package_apk
+from packager import package_apk, extract_original_signature
 
 
 def main():
@@ -170,12 +170,16 @@ def main():
         if not patch(decompiled_dir):
             sys.exit(1)
 
+        # Step 3b: Extract original signing certificate for signature spoofing
+        extract_original_signature(args.apk, decompiled_dir)
+
         # Step 4: Package
         if not package_apk(decompiled_dir, output_apk,
                            keystore=args.keystore,
                            ks_pass=args.ks_pass,
                            key_alias=args.key_alias,
-                           key_pass=args.key_pass):
+                           key_pass=args.key_pass,
+                           original_apk=args.apk):
             sys.exit(1)
 
         print(f"\n{'=' * 50}")

@@ -13,6 +13,7 @@
 - **不碰資源檔** — 使用 `-r` 模式反編譯，資源完整保留
 - **14+ 廣告 SDK** — 內建通用規則覆蓋主流廣告平台
 - **WebView 廣告攔截** — Greasemonkey 相容 userscript 引擎，支援 `@match`/`@exclude`/`@run-at`，CSS + JS + MutationObserver 四層攔截
+- **通用簽名繞過** — `SPOOF_SIGNATURE` 自動還原原始 APK 簽名，繞過 tamper detection
 - **Runtime Hook** — 不修改原始 smali，透過 LSPlant 動態攔截
 - **免 root** — 注入後的 APK 在任何設備上都能運作
 - **Graceful Degradation** — AdSweep 任何錯誤都不會導致 App crash
@@ -32,6 +33,13 @@
 |:------:|:---------------:|
 | ![Before](docs/showcase/accuweather_before.png) | ![After](docs/showcase/accuweather_after.png) |
 | 底部廣告橫幅 · "Remove Ads" 按鈕 | 無廣告 · 直接顯示天氣資訊 |
+
+### CallApp（來電辨識 App — 簽名驗證繞過）
+
+| Before | After (AdSweep) |
+|:------:|:---------------:|
+| "You are using tampered version" 警告 | 正常啟動 · 廣告域名攔截 · 零 crash |
+| Server-side + OS 雙層簽名驗證 | 通用 SPOOF_SIGNATURE + app-specific rule |
 
 > **攔截統計：** 23 hooks · 99,000+ 域名 · 2 userscripts · 零 crash
 
@@ -196,16 +204,29 @@ python discover_analyzer.py discovery_log.txt
 
 ## 支援的廣告 SDK（內建通用規則）
 
-AdMob, AppLovin, Facebook Audience Network, IronSource, Unity Ads, Vungle, AdColony, InMobi, Chartboost, MoPub, Kakao AdFit, Coupang Ads, StartApp, Pangle (ByteDance), Google UMP
+AdMob, AppLovin, Facebook Audience Network, IronSource, Unity Ads, Vungle, AdColony, InMobi, Chartboost, MoPub, Kakao AdFit, Coupang Ads, StartApp, Pangle (ByteDance), Google UMP, Tamper Detection (通用簽名繞過)
 
-## 實測結果（Money Manager）
+## 實測結果
 
+### Money Manager（記帳 App）
 - 23 hooks 成功安裝（SDK 規則 + 域名攔截 + App 專屬）
 - 99,449 個廣告域名載入
-- 6 個 Layer 3 monitors
 - 廣告攔截、簽名繞過、追蹤封堵、GDPR 跳過
 - `--rules-url auto` 自動下載規則驗證通過
 - `--discover` 模式自動發現 2 個廣告方法
+
+### AccuWeather（天氣 App — WebView 混合式）
+- shouldInterceptRequest + CSS + JS + MutationObserver 四層攔截
+- 2 userscripts 自動從 GitHub 下載更新
+- SPA (Vue.js) re-render 下仍穩定攔截
+
+### CallApp（來電辨識 — 簽名驗證 + 65K limit）
+- `SPOOF_SIGNATURE` 通用簽名繞過 + app-specific `oa0$a$a` 繞過
+- Reflection-based init 解決 classes.dex 65536 method limit
+- 自動補回 apktool 丟失的 279 個 obfuscated res/ 檔案
+- R8 重度混淆 App（37,840 smali files, 5 DEX），AdSweep 正常運作
+
+### 通用驗證
 - Android 14 (API 34) 模擬器驗證，零 crash
 - **Manager App on-device patch**: SELECT → PATCH → UNINSTALL → INSTALL 全流程驗證通過
 - LSPlant hook 引擎在 patched APK 中成功初始化

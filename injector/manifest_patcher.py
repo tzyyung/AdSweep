@@ -220,7 +220,12 @@ def _write_underscores_at(data: bytearray, offset: int, is_utf8: bool):
 
 
 def _replace_in_zip(zip_path: str, entry_name: str, new_data: bytes):
-    """Replace a single entry in a ZIP file."""
+    """Replace a single entry in a ZIP file.
+
+    Uses ZipInfo objects and open() instead of read(filename) to avoid
+    issues with obfuscated/short filenames that may fail string-based lookup.
+    Preserves original compression method for each entry.
+    """
     tmp_path = zip_path + ".tmp"
     with zipfile.ZipFile(zip_path, 'r') as src, \
          zipfile.ZipFile(tmp_path, 'w') as dst:
@@ -228,5 +233,10 @@ def _replace_in_zip(zip_path: str, entry_name: str, new_data: bytes):
             if item.filename == entry_name:
                 dst.writestr(item, new_data)
             else:
-                dst.writestr(item, src.read(item.filename))
+                # Use open(item) with the ZipInfo object, not read(filename),
+                # to avoid filename encoding/lookup issues
+                raw = src.read(item)
+                # Preserve original compression method
+                out_info = item
+                dst.writestr(out_info, raw)
     os.replace(tmp_path, zip_path)

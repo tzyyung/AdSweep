@@ -17,6 +17,7 @@ public class Rule {
     public boolean enabled;
     public String source;       // BUILTIN, LAYER2_SCAN, LAYER3_USER, MANUAL
     public String sdkName;
+    public String description;  // Short description shown in logcat
     public String notes;
     public String returnValue;  // Custom return value for BLOCK_RETURN_STRING
     public int priority;        // Higher = processed first (default 50)
@@ -37,6 +38,7 @@ public class Rule {
         rule.enabled = json.optBoolean("enabled", true);
         rule.source = json.optString("source", "BUILTIN");
         rule.sdkName = json.optString("sdkName", "");
+        rule.description = json.optString("description", "");
         rule.notes = json.optString("notes", "");
 
         rule.returnValue = json.optString("returnValue", null);
@@ -65,6 +67,7 @@ public class Rule {
         json.put("enabled", enabled);
         json.put("source", source);
         if (sdkName != null && !sdkName.isEmpty()) json.put("sdkName", sdkName);
+        if (description != null && !description.isEmpty()) json.put("description", description);
         if (notes != null && !notes.isEmpty()) json.put("notes", notes);
         if (priority != 50) json.put("priority", priority);
         if (condition != null) json.put("condition", condition);

@@ -9,7 +9,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Signature Check",
-      "notes": "Signature verification bypass — C2() returns true if signature mismatch"
+      "notes": "Signature verification bypass \u2014 C2() returns true if signature mismatch",
+      "description": "Bypass APK signature verification"
     },
     {
       "id": "mm-globals-premium",
@@ -19,7 +20,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Premium Check",
-      "notes": "k() is isPremium check; return true so e()=!k()=false, skipping purchase flow"
+      "notes": "k() is isPremium check; return true so e()=!k()=false, skipping purchase flow",
+      "description": "Spoof premium/paid status"
     },
     {
       "id": "mm-globals-check",
@@ -29,7 +31,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "License Check",
-      "notes": "Additional license/integrity check"
+      "notes": "Additional license/integrity check",
+      "description": "Bypass license integrity check"
     },
     {
       "id": "mm-analytics-noop",
@@ -39,7 +42,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Analytics",
-      "notes": "Firebase Analytics tracking"
+      "notes": "Firebase Analytics tracking",
+      "description": "Disable Firebase Analytics tracking"
     },
     {
       "id": "mm-device-id",
@@ -49,7 +53,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Device ID",
-      "notes": "Block device ad ID collection"
+      "notes": "Block device ad ID collection",
+      "description": "Block advertising device ID collection"
     },
     {
       "id": "mm-remote-request",
@@ -59,7 +64,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "Remote Request",
-      "notes": "Block remote API requests"
+      "notes": "Block remote API requests",
+      "description": "Block remote telemetry requests"
     },
     {
       "id": "mm-gdpr-consent-check",
@@ -69,7 +75,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "GDPR Consent",
-      "notes": "l() checks if consent obtained; return true to skip consent dialog entirely"
+      "notes": "l() checks if consent obtained; return true to skip consent dialog entirely",
+      "description": "Skip GDPR consent dialog"
     },
     {
       "id": "mm-ump-load-consent",
@@ -79,7 +86,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "UMP Consent",
-      "notes": "Block Google UMP consent form"
+      "notes": "Block Google UMP consent form",
+      "description": "Skip Google UMP consent form"
     },
     {
       "id": "mm-ump-load-form",
@@ -89,7 +97,8 @@
       "enabled": true,
       "source": "MANUAL",
       "sdkName": "UMP Consent",
-      "notes": "Block Google UMP consent form loading"
+      "notes": "Block Google UMP consent form loading",
+      "description": "Skip Google UMP consent form loading"
     }
   ]
 }
