@@ -195,13 +195,26 @@ graph TB
         L2C --> L2D
     end
 
-    subgraph Layer3["Layer 3 — 行為偵測（Runtime）"]
+    subgraph Layer3["Layer 3 — 行為偵測 + Userscript Engine（Runtime）"]
         L3A["WebView.loadUrl"] -->|廣告 URL| L3B[攔截 + 回報]
-        L3H["WebViewClient.onPageFinished"] -->|頁面載入完成| L3I["注入 CSS/JS 隱藏廣告 DOM"]
+        L3R["shouldInterceptRequest"] -->|廣告子資源| L3S["回傳空 response（網路層攔截）"]
+        L3H["onPageStarted"] -->|document-start| L3I["注入 CSS（防閃爍）"]
+        L3J["onPageFinished"] -->|document-end| L3K["注入 JS（DOM 清除 + MutationObserver）"]
         L3C["AdListener.onAdLoaded"] -->|廣告載入| L3D[記錄 + 回報用戶]
         L3D --> L3E{用戶判斷}
         L3E -->|是廣告| L3F[建立規則]
         L3E -->|不是| L3G[加入白名單]
+    end
+
+    subgraph Userscript["Greasemonkey Userscript Engine"]
+        US1["assets/userscripts/*.user.js"] -->|bundled| US3[UserScriptEngine]
+        US2["files/adsweep/userscripts/"] -->|downloaded override| US3
+        US3 -->|"@run-at + @match"| Layer3
+    end
+
+    subgraph AutoUpdate["規則自動更新"]
+        AU1["adsweep-rules GitHub repo"] -->|RuleUpdater 背景下載| AU2["files/adsweep/"]
+        AU2 -->|"下次啟動載入"| US2
     end
 
     Layer2 -->|建議規則| Layer1

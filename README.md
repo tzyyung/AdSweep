@@ -96,11 +96,19 @@ graph TB
         I --> I1["規則引擎<br>RuleCondition → RuleAction"]
         I1 --> J[Layer 1: SDK Hook]
         I1 --> J2["Network: 域名攔截<br>99K domains"]
-        I --> K["Layer 3: 行為偵測 + WebView CSS/JS 注入"]
+        I --> K["Layer 3: Greasemonkey Userscript Engine"]
+        K --> K1["shouldInterceptRequest（網路層）"]
+        K --> K2["onPageStarted/Finished（JS/CSS 注入）"]
         J --> L[HookEngine JNI]
         J2 --> L
-        K --> L
+        K1 --> L
+        K2 --> L
         L --> M[LSPlant + ShadowHook]
+    end
+
+    subgraph AutoUpdate["自動更新"]
+        AU["adsweep-rules GitHub"] -->|RuleUpdater| AUF["files/adsweep/"]
+        AUF -->|"下次啟動"| K
     end
 
     subgraph Rules["規則倉庫（GitHub）"]

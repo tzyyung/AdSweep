@@ -87,7 +87,38 @@ graph TD
     style D fill:#f44336,color:#fff
     style E fill:#f44336,color:#fff
     style J fill:#4CAF50,color:#fff
+
+    K["V3: Greasemonkey Userscript Engine"] --> L["shouldInterceptRequest（網路層）"]
+    K --> M["onPageStarted + onPageFinished"]
+    K --> N[".user.js 規則檔（@match/@run-at）"]
+    L --> O["99K 域名比對 → 阻止廣告資源下載"]
+    M --> P["注入 JS + MutationObserver → 移除 ad 容器"]
+    N --> Q["從 GitHub 自動下載更新 → 不需重裝 APK"]
+
+    style O fill:#4CAF50,color:#fff
+    style P fill:#4CAF50,color:#fff
+    style Q fill:#4CAF50,color:#fff
 ```
+
+### WebView 混合式 App 的設計教訓（AccuWeather 案例）
+
+AccuWeather 使用 WebView + Vue.js SPA 渲染全部內容，廣告是 server-side HTML 嵌入。
+逆向工程過程中踩的坑和解法：
+
+| 嘗試 | 結果 | 原因 |
+|------|------|------|
+| Hook `getType()` 偽裝訂閱 | hook 安裝成功但從未觸發 | DataStore 無訂閱資料，方法不會被呼叫 |
+| Hook `a9.b.b()` 偽裝非免費 | app open ad 消失，但 native ad 還在 | 不同程式碼路徑控制不同廣告 |
+| Hook `MobileAds.initialize()` | Method not found | R8 混淆為 `MobileAds.a()` |
+| Hook `NativeAdView.setNativeAd()` | 從未觸發 | 廣告不是用 NativeAdView 顯示 |
+| CSS `<style>` 注入 | 被 SPA 覆蓋 | Vue.js re-render 覆蓋 `<style>` 標籤 |
+| `shouldInterceptRequest` 攔截全部 | "Ad" 佔位符殘留 | 容器是 server HTML，不是 JS 產生 |
+| **Inline JS + MutationObserver** | **✅ 成功** | **直接操作 DOM style，survives SPA re-render** |
+
+**關鍵設計決策：**
+1. **規則驅動 > 硬編碼**：ad selector 放在 `.user.js` 檔案，從 GitHub 下載更新
+2. **四層配合**：shouldInterceptRequest（省頻寬）+ CSS（防閃爍）+ JS（DOM 清除）+ MutationObserver（SPA）
+3. **SPA 的 `onPageFinished` body 可能為空**：內容是異步載入的，必須用 MutationObserver 而非一次性查詢
 
 ## 規則設計教訓
 

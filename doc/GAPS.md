@@ -165,19 +165,31 @@ graph TD
     B --> F["WebView + shouldInterceptRequest<br>→ 可以 Hook shouldInterceptRequest"]
 ```
 
-**目前實作：**
-- `WebView.loadUrl` — 攔截已知廣告 URL pattern（doubleclick、googlesyndication 等）
-- `WebViewClient.onPageFinished` — 頁面載入後注入 CSS/JS 隱藏廣告 DOM 元素（**已實作**）
+**目前實作（全部已完成）：**
+- `WebView.loadUrl` — 攔截已知廣告 URL pattern
+- `WebViewClient.shouldInterceptRequest` — 網路層攔截廣告子資源（99K 域名比對）
+- `WebViewClient.onPageStarted` — document-start CSS 注入（防閃爍）
+- `WebViewClient.onPageFinished` — document-end JS 注入（DOM 清除 + MutationObserver）
 
-後者對 **WebView 混合式 app**（如 AccuWeather）特別有效：這類 app 的廣告是 server-side 嵌入 HTML 的，
-client-side SDK hook 無法攔截，必須在 DOM 層級注入 CSS 隱藏廣告容器。
+所有 WebView 注入邏輯由 **Greasemonkey-compatible userscript engine** 驅動：
+- `.user.js` 檔案從 `adsweep-rules` GitHub repo 自動下載
+- 支援 `@match`/`@exclude`/`@run-at` metadata
+- 更新規則不需重裝 APK
 
-| 方案 | 優點 | 缺點 |
-|------|------|------|
-| Hook shouldInterceptRequest | 攔截所有子資源請求 | 需要 WebViewClient 存在 |
-| Hook loadUrl（已實作） | 簡單，攔截廣告 URL | 只攔截主頁載入 |
-| Hook onPageFinished + CSS/JS 注入（已實作） | 對付 server-side 嵌入廣告 | 需要知道 CSS selector |
-| 三者都 Hook | 最全面 | 可能重複攔截 |
+**AccuWeather 踩坑記錄：**
+- 廣告是 server-side HTML 嵌入 → client-side SDK hook 無效
+- CSS `<style>` 注入被 Vue.js SPA 重新渲染覆蓋 → 改用 inline JS + MutationObserver
+- `shouldInterceptRequest` 攔截 `gpt.js` 後，native "Ad" 佔位符不消失 → 需要額外 JS 移除 `div[ad-type]`
+- DOM debug 時 `onPageFinished` 的 `body.innerHTML` 長度為 0（SPA 異步載入）→ 需要延遲或 MutationObserver
+- `adb push` 的檔案有 SELinux EACCES → 必須由 app 自己寫入（RuleUpdater）
+
+| 方案 | 優點 | 缺點 | 狀態 |
+|------|------|------|------|
+| Hook shouldInterceptRequest | 網路層攔截，省頻寬 | ad 佔位符可能殘留 | ✅ 已實作 |
+| Hook loadUrl | 簡單，攔截廣告 URL | 只攔截主頁載入 | ✅ 已實作 |
+| onPageStarted CSS 注入 | 防閃爍 | SPA 可能覆蓋 | ✅ 已實作 |
+| onPageFinished JS 注入 | 對付 SPA + server-side 廣告 | 需要正確的 selector | ✅ 已實作 |
+| 四者配合 | 最全面 | — | ✅ 目前方案 |
 
 ### 8. 加固 App
 
