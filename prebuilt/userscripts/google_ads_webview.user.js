@@ -2,42 +2,34 @@
 // @name        Google Ads WebView Blocker
 // @match       *://*/*
 // @run-at      document-end
-// @version     1.2
+// @version     1.4
 // ==/UserScript==
 
-// Phase 1: Remove existing ad elements + collapse parent containers
 function removeAds() {
+  // Google Ad Manager containers
   document.querySelectorAll('[data-google-query-id]').forEach(function(el) {
-    var parent = el.parentElement;
-    el.remove();
-    if (parent && parent.children.length === 0) parent.style.display = 'none';
+    collapseWithParent(el);
   });
+  // Generic ad containers: div[ad-type] (AccuWeather etc.), div.ad
+  document.querySelectorAll('div[ad-type], div.ad').forEach(function(el) {
+    el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important';
+  });
+  // Ad iframes
   document.querySelectorAll('iframe').forEach(function(f) {
     var src = f.src || '';
     if (/doubleclick|googlesyndication|googleads|adservice\.google/.test(src)) {
-      var parent = f.parentElement;
-      f.remove();
-      if (parent && parent.children.length === 0) parent.style.display = 'none';
+      collapseWithParent(f);
     }
   });
 }
 removeAds();
 
-// Phase 2: MutationObserver for dynamically loaded ads
-new MutationObserver(function(mutations) {
-  var needsClean = false;
-  mutations.forEach(function(m) {
-    m.addedNodes.forEach(function(n) {
-      if (n.nodeType === 1) {
-        if (n.getAttribute && n.getAttribute('data-google-query-id')) needsClean = true;
-        if (n.tagName === 'IFRAME' && /doubleclick|googlesyndication|googleads/.test(n.src || '')) needsClean = true;
-      }
-    });
-  });
-  if (needsClean) removeAds();
+// MutationObserver: re-run on every DOM change (SPA re-renders)
+new MutationObserver(function() {
+  removeAds();
 }).observe(document.body || document.documentElement, {childList: true, subtree: true});
 
-// Phase 3: Intercept fetch ad requests
+// Intercept fetch ad requests
 (function() {
   var origFetch = window.fetch;
   if (origFetch) {
@@ -48,3 +40,11 @@ new MutationObserver(function(mutations) {
     };
   }
 })();
+
+function collapseWithParent(el) {
+  var parent = el.parentElement;
+  el.remove();
+  if (parent && parent.children.length === 0) {
+    parent.style.cssText = 'display:none!important;height:0!important';
+  }
+}

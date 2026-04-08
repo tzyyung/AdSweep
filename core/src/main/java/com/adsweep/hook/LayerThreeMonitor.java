@@ -269,19 +269,6 @@ public class LayerThreeMonitor {
                             }
                         }
 
-                        // Remove ad containers: div[ad-type] (AccuWeather), div.ad, etc.
-                        // This runs inline (not via userscript file) to avoid timing/permission issues
-                        wv.evaluateJavascript(
-                            "(function(){" +
-                            "function killAds(){" +
-                            "var n=0;" +
-                            "document.querySelectorAll('div[ad-type],div.ad').forEach(function(el){el.style.cssText='display:none!important;height:0!important';n++});" +
-                            "if(n>0)console.log('[AdSweep] Hid '+n+' ad containers');" +
-                            "}" +
-                            "killAds();" +
-                            "new MutationObserver(function(){killAds()}).observe(document.body||document.documentElement,{childList:true,subtree:true});" +
-                            "})()", null);
-
                         // document-idle scripts (delayed 100ms)
                         String idle = engine.buildInjection(url, "document-idle");
                         if (!idle.isEmpty()) {
