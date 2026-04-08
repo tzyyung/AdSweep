@@ -2,15 +2,21 @@ package com.adsweep.hook;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import com.adsweep.engine.DomainMatcher;
 import com.adsweep.reporter.DetectionEvent;
 import com.adsweep.reporter.FloatingReporter;
 import com.adsweep.userscript.UserScriptEngine;
+
+import java.io.ByteArrayInputStream;
 
 import java.lang.reflect.Method;
 import java.util.HashSet;
@@ -52,11 +58,13 @@ public class LayerThreeMonitor {
 
     private final Context context;
     private final UserScriptEngine engine;
+    private final DomainMatcher domainMatcher;
     private final Set<String> reportedUrls = new HashSet<>();
 
-    public LayerThreeMonitor(Context context, UserScriptEngine engine) {
+    public LayerThreeMonitor(Context context, UserScriptEngine engine, DomainMatcher domainMatcher) {
         this.context = context;
         this.engine = engine;
+        this.domainMatcher = domainMatcher;
     }
 
     /**
@@ -75,7 +83,10 @@ public class LayerThreeMonitor {
         // Monitor 3: WebViewClient.onPageFinished — document-end/idle userscript injection
         installed += hookWebViewOnPageFinished() ? 1 : 0;
 
-        // Monitor 4: Ad callback methods — detect when ads are loaded
+        // Monitor 4: WebViewClient.shouldInterceptRequest — block ad resources at network level
+        installed += hookShouldInterceptRequest() ? 1 : 0;
+
+        // Monitor 5: Ad callback methods — detect when ads are loaded
         installed += hookAdCallbacks();
 
         Log.i(TAG, "Layer 3: " + installed + " monitors installed"
@@ -267,6 +278,60 @@ public class LayerThreeMonitor {
                     }
                 }
                 return result;
+            } catch (Exception e) {
+                try { return callOriginal(args); } catch (Exception ex) { return null; }
+            }
+        }
+    }
+
+    // --- WebViewClient.shouldInterceptRequest — block ad sub-resources at network level ---
+
+    private boolean hookShouldInterceptRequest() {
+        if (domainMatcher == null || domainMatcher.isEmpty()) return false;
+        try {
+            Method target = WebViewClient.class.getMethod("shouldInterceptRequest",
+                    WebView.class, WebResourceRequest.class);
+            ShouldInterceptCallback callback = new ShouldInterceptCallback(domainMatcher);
+            Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
+            Method backup = HookEngine.hook(target, callback, callbackMethod);
+            if (backup != null) {
+                callback.setBackupMethod(backup);
+                callback.setTargetMethod(target);
+                Log.i(TAG, "Hooked: WebViewClient.shouldInterceptRequest (ad resource blocking)");
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to hook shouldInterceptRequest", e);
+        }
+        return false;
+    }
+
+    static class ShouldInterceptCallback extends HookCallback {
+        private final DomainMatcher domainMatcher;
+        // Empty response to return for blocked requests
+        private static final byte[] EMPTY = new byte[0];
+
+        ShouldInterceptCallback(DomainMatcher domainMatcher) {
+            this.domainMatcher = domainMatcher;
+        }
+
+        @Override
+        public Object handleHook(Object[] args) {
+            try {
+                // args[0]=WebViewClient, args[1]=WebView, args[2]=WebResourceRequest
+                if (args.length >= 3 && args[2] instanceof WebResourceRequest) {
+                    WebResourceRequest request = (WebResourceRequest) args[2];
+                    Uri uri = request.getUrl();
+                    if (uri != null) {
+                        String host = uri.getHost();
+                        if (host != null && domainMatcher.matchesWithParents(host)) {
+                            Log.d(TAG, "Blocked WebView resource: " + host + uri.getPath());
+                            return new WebResourceResponse("text/plain", "utf-8",
+                                    new ByteArrayInputStream(EMPTY));
+                        }
+                    }
+                }
+                return callOriginal(args);
             } catch (Exception e) {
                 try { return callOriginal(args); } catch (Exception ex) { return null; }
             }

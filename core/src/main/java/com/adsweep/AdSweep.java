@@ -81,7 +81,7 @@ public final class AdSweep {
 
         try {
             UserScriptEngine engine = new UserScriptEngine(context, hookManager.getRuleStore());
-            LayerThreeMonitor l3 = new LayerThreeMonitor(context, engine);
+            LayerThreeMonitor l3 = new LayerThreeMonitor(context, engine, hookManager.getDomainMatcher());
             l3.installMonitors();
         } catch (Throwable t) {
             Log.w(TAG, "Layer 3 init failed (non-critical)", t);
