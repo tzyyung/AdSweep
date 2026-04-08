@@ -20,12 +20,13 @@
 
 ## 實際效果
 
-### Money Manager（記帳 App）
+### Money Manager（記帳 App — SDK Hook + 簽名繞過）
 
 | Before | After (AdSweep) |
 |:------:|:---------------:|
 | ![Before](docs/showcase/money_manager_before.png) | ![After](docs/showcase/money_manager_after.png) |
 | Ad 佔位框 · "4.10.8 **AD**" · "Remove Ads." | 無廣告 · "4.10.8 **GF**" · 乾淨介面 |
+| AdMob + GDPR consent + 簽名驗證 | 9 條 app-specific rules · 23 hooks |
 
 ### AccuWeather（天氣 App — WebView 混合式）
 
@@ -33,6 +34,7 @@
 |:------:|:---------------:|
 | ![Before](docs/showcase/accuweather_before.png) | ![After](docs/showcase/accuweather_after.png) |
 | 底部廣告橫幅 · "Remove Ads" 按鈕 | 無廣告 · 直接顯示天氣資訊 |
+| WebView + Vue.js SPA 廣告 | shouldInterceptRequest + CSS + JS + MutationObserver 四層攔截 |
 
 ### CallApp（來電辨識 App — 簽名驗證繞過）
 

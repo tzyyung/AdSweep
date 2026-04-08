@@ -120,6 +120,49 @@ AccuWeather 使用 WebView + Vue.js SPA 渲染全部內容，廣告是 server-si
 2. **四層配合**：shouldInterceptRequest（省頻寬）+ CSS（防閃爍）+ JS（DOM 清除）+ MutationObserver（SPA）
 3. **SPA 的 `onPageFinished` body 可能為空**：內容是異步載入的，必須用 MutationObserver 而非一次性查詢
 
+## App 案例分析
+
+### Money Manager（com.realbyteapps.moneymanagerfree）
+
+**類型：** Native App + AdMob SDK
+
+| 攔截項目 | 規則 | 說明 |
+|----------|------|------|
+| 簽名驗證 | `Main.C2()` → return false | 繞過 APK 簽名檢查 |
+| Premium 偽裝 | `Globals.k()` → return true | isPremium，讓 `e()=!k()=false` 跳過購買流程 |
+| 廣告 SDK | AdMob `loadAd/initialize` → noop | common rules 覆蓋 |
+| Analytics | `RbAnalyticAgent.a()` → noop | 停用 Firebase Analytics |
+| Device ID | `DeviceAdId.b()` → return "" | 阻止廣告 ID 收集 |
+| GDPR | `GDPRConsent.l()` → return true | 跳過 consent dialog |
+
+**關鍵教訓：** Hook 是全局的（`Globals.k()` 比 `Globals.e()` 更安全）、不要 noop callback 觸發方法（會卡住 App）。
+
+### AccuWeather（com.accuweather.android）
+
+**類型：** WebView + Vue.js SPA 混合式
+
+| 攔截項目 | 規則 | 說明 |
+|----------|------|------|
+| 訂閱偽裝 | `a9.b.b/c()` → return false | 偽裝為付費用戶 |
+| SDK 初始化 | `MobileAds.a()` → noop | R8 混淆後的 initialize() |
+| Native 廣告 | `nativead.d.setNativeAd/addView` → noop | 阻止原生廣告顯示 |
+| WebView 廣告 | shouldInterceptRequest + 域名攔截 | 阻止廣告資源下載 |
+| SPA 廣告容器 | JS + MutationObserver userscript | 移除 `div[ad-type]` 廣告容器 |
+
+**關鍵教訓：** SPA 的 `onPageFinished` body 可能為空（異步載入），必須用 MutationObserver；CSS `<style>` 注入會被 Vue.js re-render 覆蓋，改用 inline JS。
+
+### CallApp（com.nll.cb）
+
+**類型：** R8 重度混淆 + 雙層簽名驗證
+
+| 攔截項目 | 規則 | 說明 |
+|----------|------|------|
+| OS 簽名查詢 | `SPOOF_SIGNATURE` (common) | 通用 `getPackageInfo()` hook |
+| Server SHA 驗證 | `oa0$a$a.a()` → return false | FailedSHA1Verification 具體類 |
+| URL 攔截豁免 | `URL.openConnection` → disabled | App 需要正常網路連線 |
+
+**關鍵教訓：** 65536 method limit 需要 reflection init；LSPlant 不能 hook abstract method（要 hook 具體子類）；`ApplicationPackageManager` 是 hidden API（需要 `getPackageManager().getClass()` 動態解析）。
+
 ## 規則設計教訓
 
 ### Hook 是全局的

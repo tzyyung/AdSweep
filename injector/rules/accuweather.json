@@ -1,0 +1,65 @@
+{
+  "version": 3,
+  "rules": [
+    {
+      "id": "aw-free-check-b",
+      "className": "a9.b",
+      "methodName": "b",
+      "paramTypes": ["java.util.Set"],
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "AccuWeather Free User Check (b)",
+      "description": "Spoof subscribed status (bypass free user check)",
+      "notes": "a9.b.b(Set) returns true=FREE user. Return false to fake subscribed status."
+    },
+    {
+      "id": "aw-free-check-c",
+      "className": "a9.b",
+      "methodName": "c",
+      "paramTypes": ["java.util.Set"],
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "AccuWeather Free User Check (c)",
+      "description": "Spoof subscribed status (bypass lapsed check)",
+      "notes": "a9.b.c(Set) checks free/lapsed status. Return false to fake subscribed."
+    },
+    {
+      "id": "aw-mobileads-init",
+      "className": "com.google.android.gms.ads.MobileAds",
+      "methodName": "a",
+      "paramTypes": ["android.content.Context", "Ea.c"],
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "Google MobileAds Init (obfuscated)",
+      "description": "Block AdMob SDK initialization (R8 obfuscated)",
+      "notes": "MobileAds.initialize() obfuscated to a(). Block SDK init entirely."
+    },
+    {
+      "id": "aw-nativead-set",
+      "className": "com.google.android.gms.ads.nativead.d",
+      "methodName": "setNativeAd",
+      "paramTypes": ["com.google.android.gms.ads.nativead.NativeAd"],
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "NativeAdView.setNativeAd Block",
+      "description": "Block native ad display in NativeAdView",
+      "notes": "Prevent native ad from being displayed in NativeAdView."
+    },
+    {
+      "id": "aw-nativead-addview",
+      "className": "com.google.android.gms.ads.nativead.d",
+      "methodName": "addView",
+      "paramTypes": ["android.view.View", "int", "android.view.ViewGroup$LayoutParams"],
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "APP_SPECIFIC",
+      "sdkName": "NativeAdView.addView Block",
+      "description": "Block child views added to native ad container",
+      "notes": "Prevent child views from being added to native ad container."
+    }
+  ]
+}
