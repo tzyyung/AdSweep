@@ -81,6 +81,20 @@ public class RuleStore {
     }
 
     /**
+     * Get WebView-specific rules (className == "WEBVIEW").
+     * These are handled by UserScriptEngine, not HookManager.
+     */
+    public List<Rule> getWebViewRules() {
+        List<Rule> result = new ArrayList<>();
+        for (Rule r : getAllRules()) {
+            if (r.enabled && "WEBVIEW".equals(r.className)) {
+                result.add(r);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Export all rules as JSON string.
      */
     public String exportRulesJson() throws Exception {

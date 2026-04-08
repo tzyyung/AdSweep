@@ -57,6 +57,7 @@ public class HookManager {
 
         for (Rule rule : rules) {
             if (!rule.enabled) continue;
+            if ("WEBVIEW".equals(rule.className)) continue; // handled by UserScriptEngine
 
             try {
                 Class<?> targetClass = cl.loadClass(rule.className);

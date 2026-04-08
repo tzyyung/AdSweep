@@ -226,8 +226,19 @@ def copy_payload(decompiled_dir: str) -> bool:
     if os.path.exists(assets_src):
         os.makedirs(assets_dst, exist_ok=True)
         for asset_file in os.listdir(assets_src):
-            shutil.copy2(os.path.join(assets_src, asset_file), assets_dst)
-            print(f"[+] Copied asset: {asset_file}")
+            src_path = os.path.join(assets_src, asset_file)
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, assets_dst)
+                print(f"[+] Copied asset: {asset_file}")
+
+    # Copy built-in userscripts
+    userscripts_src = os.path.join(PREBUILT_DIR, "userscripts")
+    userscripts_dst = os.path.join(assets_dst, "userscripts")
+    if os.path.isdir(userscripts_src):
+        os.makedirs(userscripts_dst, exist_ok=True)
+        for us_file in glob.glob(os.path.join(userscripts_src, "*.user.js")):
+            shutil.copy2(us_file, userscripts_dst)
+            print(f"[+] Copied userscript: {os.path.basename(us_file)}")
 
     # Convert DEX to smali and add as next smali_classesN directory
     dex_src = os.path.join(PREBUILT_DIR, "classes.dex")

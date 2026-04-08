@@ -155,10 +155,16 @@ def main():
 
         elif args.rules:
             import shutil as _shutil
+            import glob as _glob
             assets_dir = os.path.join(decompiled_dir, "assets")
             os.makedirs(assets_dir, exist_ok=True)
             _shutil.copy2(args.rules, os.path.join(assets_dir, "adsweep_rules_app.json"))
             print(f"[+] Copied app rules: {args.rules}")
+            # Copy app-specific userscripts from the same directory as rules
+            rules_dir = os.path.dirname(os.path.abspath(args.rules))
+            for us_file in _glob.glob(os.path.join(rules_dir, "*.user.js")):
+                _shutil.copy2(us_file, assets_dir)
+                print(f"[+] Copied app userscript: {os.path.basename(us_file)}")
 
         # Step 3: Patch
         if not patch(decompiled_dir):

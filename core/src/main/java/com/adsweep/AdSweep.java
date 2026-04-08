@@ -8,6 +8,7 @@ import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
 import com.adsweep.hook.LayerThreeMonitor;
 import com.adsweep.reporter.FloatingReporter;
+import com.adsweep.userscript.UserScriptEngine;
 
 import java.io.File;
 
@@ -78,7 +79,8 @@ public final class AdSweep {
         }
 
         try {
-            LayerThreeMonitor l3 = new LayerThreeMonitor(context);
+            UserScriptEngine engine = new UserScriptEngine(context, hookManager.getRuleStore());
+            LayerThreeMonitor l3 = new LayerThreeMonitor(context, engine);
             l3.installMonitors();
         } catch (Throwable t) {
             Log.w(TAG, "Layer 3 init failed (non-critical)", t);
