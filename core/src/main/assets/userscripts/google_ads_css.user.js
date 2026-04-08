@@ -27,4 +27,7 @@ GM_addStyle([
   // GPT ad label / badge
   'div[class*="ad-label"] { display:none !important }',
   'div[class*="advertisement"] { display:none !important }',
+  // AccuWeather ad containers (ad-type attribute)
+  'div[ad-type] { display:none !important; height:0 !important; overflow:hidden !important }',
+  'div.ad { display:none !important; height:0 !important; overflow:hidden !important }',
 ].join('\n'));
