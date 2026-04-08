@@ -16,6 +16,24 @@
 - **免 root** — 注入後的 APK 在任何設備上都能運作
 - **Graceful Degradation** — AdSweep 任何錯誤都不會導致 App crash
 
+## 實際效果
+
+### Money Manager（記帳 App）
+
+| Before | After (AdSweep) |
+|:------:|:---------------:|
+| ![Before](docs/showcase/money_manager_before.png) | ![After](docs/showcase/money_manager_after.png) |
+| Ad 佔位框 · "4.10.8 **AD**" · "Remove Ads." | 無廣告 · "4.10.8 **GF**" · 乾淨介面 |
+
+### AccuWeather（天氣 App — WebView 混合式）
+
+| Before | After (AdSweep) |
+|:------:|:---------------:|
+| ![Before](docs/showcase/accuweather_before.png) | ![After](docs/showcase/accuweather_after.png) |
+| 底部廣告橫幅 · "Remove Ads" 按鈕 | 無廣告 · 直接顯示天氣資訊 |
+
+> **攔截統計：** 23 hooks · 99,000+ 域名 · 2 userscripts · 零 crash
+
 ## 快速開始
 
 ### Manager App（On-Device，推薦）
