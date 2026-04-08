@@ -13,7 +13,9 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Greasemonkey-compatible userscript engine for Android WebView.
@@ -56,6 +58,7 @@ public class UserScriptEngine {
 
     public UserScriptEngine(Context context, RuleStore ruleStore) {
         loadBuiltinScripts(context);
+        loadOverrideScripts(context);  // files/adsweep/userscripts/ (hot-reload)
         loadRuleScripts(context, ruleStore);
         Log.i(TAG, "Loaded " + scripts.size() + " userscripts");
         for (UserScript s : scripts) {
@@ -86,6 +89,44 @@ public class UserScriptEngine {
             }
         } catch (Exception e) {
             Log.w(TAG, "Failed to load built-in userscripts", e);
+        }
+    }
+
+    /**
+     * Load override userscripts from writable directory: files/adsweep/userscripts/
+     * These take priority over built-in scripts with the same @name.
+     * Enables hot-reload: push via adb, force-stop, relaunch — no reinstall needed.
+     *
+     * Usage: adb push script.user.js /data/data/<pkg>/files/adsweep/userscripts/
+     */
+    private void loadOverrideScripts(Context context) {
+        File dir = new File(context.getFilesDir(), "adsweep/userscripts");
+        if (!dir.isDirectory()) return;
+
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        Set<String> overrideNames = new HashSet<>();
+        for (File file : files) {
+            if (!file.getName().endsWith(".user.js")) continue;
+            try {
+                String content = readStream(new FileInputStream(file));
+                if (content == null) continue;
+                UserScript script = UserScript.parse(content);
+                if (script != null) {
+                    // Remove built-in script with same name (override)
+                    scripts.removeIf(s -> s.name.equals(script.name));
+                    scripts.add(script);
+                    overrideNames.add(script.name);
+                    Log.i(TAG, "Override userscript loaded: " + file.getName());
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to load override: " + file.getName(), e);
+            }
+        }
+
+        if (!overrideNames.isEmpty()) {
+            Log.i(TAG, "Overrides active: " + overrideNames);
         }
     }
 

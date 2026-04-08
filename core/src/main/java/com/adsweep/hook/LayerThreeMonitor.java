@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.View;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
@@ -86,7 +87,10 @@ public class LayerThreeMonitor {
         // Monitor 4: WebViewClient.shouldInterceptRequest — block ad resources at network level
         installed += hookShouldInterceptRequest() ? 1 : 0;
 
-        // Monitor 5: Ad callback methods — detect when ads are loaded
+        // Monitor 5: Hide native NativeAdView when shouldInterceptRequest blocks ad content
+        installed += hookNativeAdViewVisibility() ? 1 : 0;
+
+        // Monitor 6: Ad callback methods — detect when ads are loaded
         installed += hookAdCallbacks();
 
         Log.i(TAG, "Layer 3: " + installed + " monitors installed"
@@ -332,6 +336,54 @@ public class LayerThreeMonitor {
                     }
                 }
                 return callOriginal(args);
+            } catch (Exception e) {
+                try { return callOriginal(args); } catch (Exception ex) { return null; }
+            }
+        }
+    }
+
+    // --- Hide NativeAdView — collapse empty ad placeholder when resources are blocked ---
+
+    private boolean hookNativeAdViewVisibility() {
+        try {
+            Class<?> nativeAdViewClass = context.getClassLoader()
+                    .loadClass("com.google.android.gms.ads.nativead.d");
+            // Hook onVisibilityChanged — fires when view becomes visible
+            Method target = nativeAdViewClass.getMethod("onVisibilityChanged",
+                    View.class, int.class);
+            NativeAdViewHider callback = new NativeAdViewHider();
+            Method callbackMethod = HookCallback.class.getMethod("handleHook", Object[].class);
+            Method backup = HookEngine.hook(target, callback, callbackMethod);
+            if (backup != null) {
+                callback.setBackupMethod(backup);
+                callback.setTargetMethod(target);
+                Log.i(TAG, "Hooked: NativeAdView.onVisibilityChanged (auto-hide)");
+                return true;
+            }
+        } catch (ClassNotFoundException e) {
+            // NativeAdView not present in this app
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to hook NativeAdView visibility", e);
+        }
+        return false;
+    }
+
+    static class NativeAdViewHider extends HookCallback {
+        @Override
+        public Object handleHook(Object[] args) {
+            try {
+                // args[0]=NativeAdView(this), args[1]=View, args[2]=visibility
+                if (args[0] instanceof View) {
+                    View adView = (View) args[0];
+                    // Force GONE to collapse the space
+                    adView.setVisibility(View.GONE);
+                    // Also hide parent if it's just a wrapper
+                    if (adView.getParent() instanceof View) {
+                        ((View) adView.getParent()).setVisibility(View.GONE);
+                    }
+                    Log.d(TAG, "Hidden NativeAdView + parent");
+                }
+                return null; // Don't call original (we override visibility)
             } catch (Exception e) {
                 try { return callOriginal(args); } catch (Exception ex) { return null; }
             }
