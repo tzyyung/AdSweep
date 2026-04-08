@@ -1,6 +1,6 @@
 # AdSweep
 
-通用 Android 廣告攔截模組。注入任意 APK，自動偵測並攔截已知廣告 SDK，支援社群規則倉庫自動下載。
+通用 Android 廣告攔截模組。注入任意 APK，自動偵測並攔截已知廣告 SDK，支援 WebView 廣告攔截（Greasemonkey 相容 userscript 引擎），社群規則倉庫自動下載。
 
 ## 特點
 
@@ -12,6 +12,7 @@
 - **自動發現模式** — `--discover` 自動記錄廣告行為，產出可用規則
 - **不碰資源檔** — 使用 `-r` 模式反編譯，資源完整保留
 - **14+ 廣告 SDK** — 內建通用規則覆蓋主流廣告平台
+- **WebView 廣告攔截** — Greasemonkey 相容 userscript 引擎，支援 `@match`/`@exclude`/`@run-at`，CSS + JS + MutationObserver 四層攔截
 - **Runtime Hook** — 不修改原始 smali，透過 LSPlant 動態攔截
 - **免 root** — 注入後的 APK 在任何設備上都能運作
 - **Graceful Degradation** — AdSweep 任何錯誤都不會導致 App crash
@@ -153,14 +154,16 @@ graph LR
         S2["方法 Hook → 阻止 SDK 初始化/載入"]
     end
 
-    subgraph L3["行為層（6 monitors）"]
-        B1["AdListener / MaxAdListener callbacks"]
-        B2["偵測 → 回報 → 用戶確認"]
+    subgraph L3["WebView 層（Userscript Engine）"]
+        B1["Greasemonkey 相容 .user.js"]
+        B2["shouldInterceptRequest → 攔截廣告資源"]
+        B3["CSS + JS + MutationObserver → 移除 ad 容器"]
     end
 
     N2 --> R["廣告被攔截"]
     S2 --> R
-    B2 -.->|用戶回報| R
+    B2 --> R
+    B3 --> R
 ```
 
 ## 文件
