@@ -136,8 +136,12 @@ public class RuleStore {
     // --- Loading ---
 
     private void loadAll() {
-        commonRules = loadRulesFromAsset(COMMON_RULES_ASSET);
-        // App rules: load from file first, fallback to bundled asset
+        // Common rules: downloaded file (from RuleUpdater) → bundled asset
+        commonRules = loadRulesFromFile("adsweep/rules_common.json");
+        if (commonRules.isEmpty()) {
+            commonRules = loadRulesFromAsset(COMMON_RULES_ASSET);
+        }
+        // App rules: downloaded file → bundled asset
         appRules = loadRulesFromFile(APP_RULES_FILE);
         if (appRules.isEmpty()) {
             appRules = loadRulesFromAsset(APP_RULES_ASSET);

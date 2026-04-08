@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Collections;
@@ -23,25 +25,43 @@ public class DomainMatcher {
         this.domains = domains;
     }
 
-    /** Load domain list from assets file. One domain per line, # comments. */
+    /** Load domain list: try downloaded file first, fallback to bundled asset. */
     public static DomainMatcher fromAsset(Context context, String assetName) {
+        // Try downloaded version first (from RuleUpdater)
+        File downloaded = new File(context.getFilesDir(), "adsweep/domains.txt");
+        if (downloaded.exists()) {
+            try {
+                Set<String> domains = loadFromStream(new FileInputStream(downloaded));
+                Log.i(TAG, "Loaded " + domains.size() + " domains from downloaded file");
+                return new DomainMatcher(domains);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to load downloaded domains, falling back to asset", e);
+            }
+        }
+
+        // Fallback to bundled asset
         Set<String> domains = new HashSet<>();
         try {
-            InputStream is = context.getAssets().open(assetName);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (!line.isEmpty() && !line.startsWith("#")) {
-                    domains.add(line.toLowerCase());
-                }
-            }
-            reader.close();
+            domains = loadFromStream(context.getAssets().open(assetName));
             Log.i(TAG, "Loaded " + domains.size() + " domains from " + assetName);
         } catch (Exception e) {
             Log.w(TAG, "Failed to load domain list: " + assetName, e);
         }
         return new DomainMatcher(domains);
+    }
+
+    private static Set<String> loadFromStream(InputStream is) throws Exception {
+        Set<String> domains = new HashSet<>();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            if (!line.isEmpty() && !line.startsWith("#")) {
+                domains.add(line.toLowerCase());
+            }
+        }
+        reader.close();
+        return domains;
     }
 
     /** Check if a URL matches any domain in the list (with subdomain support). */

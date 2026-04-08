@@ -8,6 +8,7 @@ import com.adsweep.hook.HookEngine;
 import com.adsweep.hook.HookManager;
 import com.adsweep.hook.LayerThreeMonitor;
 import com.adsweep.reporter.FloatingReporter;
+import com.adsweep.rules.RuleUpdater;
 import com.adsweep.userscript.UserScriptEngine;
 
 import java.io.File;
@@ -84,6 +85,13 @@ public final class AdSweep {
             l3.installMonitors();
         } catch (Throwable t) {
             Log.w(TAG, "Layer 3 init failed (non-critical)", t);
+        }
+
+        // Background rule update check (non-blocking)
+        try {
+            new RuleUpdater(context).checkInBackground();
+        } catch (Throwable t) {
+            Log.w(TAG, "Rule updater init failed (non-critical)", t);
         }
 
         initialized = true;
