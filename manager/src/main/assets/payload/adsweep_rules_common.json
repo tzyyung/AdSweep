@@ -5,11 +5,14 @@
       "id": "admob-baseadview-load",
       "className": "com.google.android.gms.ads.BaseAdView",
       "methodName": "loadAd",
-      "paramTypes": ["com.google.android.gms.ads.AdRequest"],
+      "paramTypes": [
+        "com.google.android.gms.ads.AdRequest"
+      ],
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdMob"
+      "sdkName": "AdMob",
+      "description": "Block AdMob banner/native ad loading"
     },
     {
       "id": "admob-interstitial-load",
@@ -18,7 +21,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdMob"
+      "sdkName": "AdMob",
+      "description": "Block AdMob interstitial ad loading"
     },
     {
       "id": "admob-rewarded-load",
@@ -27,7 +31,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdMob"
+      "sdkName": "AdMob",
+      "description": "Block AdMob rewarded ad loading"
     },
     {
       "id": "admob-adloader-load",
@@ -36,7 +41,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdMob"
+      "sdkName": "AdMob",
+      "description": "Block AdMob native ad loader"
     },
     {
       "id": "admob-mobileads-init",
@@ -45,7 +51,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdMob"
+      "sdkName": "AdMob",
+      "description": "Block AdMob SDK initialization"
     },
     {
       "id": "applovin-sdk-init",
@@ -54,7 +61,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AppLovin"
+      "sdkName": "AppLovin",
+      "description": "Block AppLovin SDK initialization"
     },
     {
       "id": "applovin-maxad-load",
@@ -63,7 +71,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AppLovin MAX"
+      "sdkName": "AppLovin MAX",
+      "description": "Block AppLovin MAX banner ad loading"
     },
     {
       "id": "applovin-interstitial-load",
@@ -72,7 +81,18 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AppLovin MAX"
+      "sdkName": "AppLovin MAX",
+      "description": "Block AppLovin MAX interstitial ad loading"
+    },
+    {
+      "id": "applovin-rewarded-load",
+      "className": "com.applovin.mediation.ads.MaxRewardedAd",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "AppLovin MAX",
+      "description": "Block AppLovin MAX rewarded ad loading"
     },
     {
       "id": "facebook-adview-load",
@@ -81,7 +101,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Facebook Audience Network"
+      "sdkName": "Facebook Audience Network",
+      "description": "Block Facebook Audience Network banner ad"
     },
     {
       "id": "facebook-interstitial-load",
@@ -90,7 +111,28 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Facebook Audience Network"
+      "sdkName": "Facebook Audience Network",
+      "description": "Block Facebook Audience Network interstitial ad"
+    },
+    {
+      "id": "facebook-nativead-load",
+      "className": "com.facebook.ads.NativeAd",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Facebook Audience Network",
+      "description": "Block Facebook native ad loading"
+    },
+    {
+      "id": "facebook-nativeadsmanager-load",
+      "className": "com.facebook.ads.NativeAdsManager",
+      "methodName": "loadAds",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Facebook Audience Network",
+      "description": "Block Facebook native ads batch loading"
     },
     {
       "id": "ironsource-demandonly-interstitial",
@@ -99,7 +141,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "IronSource"
+      "sdkName": "IronSource",
+      "description": "Block IronSource interstitial ad loading"
     },
     {
       "id": "ironsource-demandonly-rewarded",
@@ -108,7 +151,48 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "IronSource"
+      "sdkName": "IronSource",
+      "description": "Block IronSource rewarded video loading"
+    },
+    {
+      "id": "ironsource-show-rewarded",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "showRewardedVideo",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource",
+      "description": "Block IronSource rewarded video display"
+    },
+    {
+      "id": "ironsource-show-interstitial",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "showInterstitial",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource",
+      "description": "Block IronSource interstitial ad display"
+    },
+    {
+      "id": "ironsource-is-rewarded-available",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "isRewardedVideoAvailable",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource",
+      "description": "Report rewarded video as unavailable"
+    },
+    {
+      "id": "ironsource-is-interstitial-ready",
+      "className": "com.ironsource.mediationsdk.IronSource",
+      "methodName": "isInterstitialReady",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "IronSource",
+      "description": "Report interstitial ad as not ready"
     },
     {
       "id": "unity-ads-init",
@@ -117,7 +201,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Unity Ads"
+      "sdkName": "Unity Ads",
+      "description": "Block Unity Ads SDK initialization"
     },
     {
       "id": "unity-ads-load",
@@ -126,7 +211,18 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Unity Ads"
+      "sdkName": "Unity Ads",
+      "description": "Block Unity Ads ad loading"
+    },
+    {
+      "id": "unity-ads-show",
+      "className": "com.unity3d.ads.UnityAds",
+      "methodName": "show",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Unity Ads",
+      "description": "Block Unity Ads ad display"
     },
     {
       "id": "vungle-init",
@@ -135,7 +231,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Vungle"
+      "sdkName": "Vungle",
+      "description": "Block Vungle SDK initialization"
     },
     {
       "id": "adcolony-configure",
@@ -144,7 +241,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "AdColony"
+      "sdkName": "AdColony",
+      "description": "Block AdColony SDK configuration"
     },
     {
       "id": "inmobi-sdk-init",
@@ -153,7 +251,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "InMobi"
+      "sdkName": "InMobi",
+      "description": "Block InMobi SDK initialization"
     },
     {
       "id": "chartboost-sdk-init",
@@ -162,7 +261,48 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Chartboost"
+      "sdkName": "Chartboost",
+      "description": "Block Chartboost SDK initialization"
+    },
+    {
+      "id": "chartboost-show-interstitial",
+      "className": "com.chartboost.sdk.Chartboost",
+      "methodName": "showInterstitial",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Chartboost",
+      "description": "Block Chartboost interstitial ad display"
+    },
+    {
+      "id": "chartboost-show-rewarded",
+      "className": "com.chartboost.sdk.Chartboost",
+      "methodName": "showRewardedVideo",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Chartboost",
+      "description": "Block Chartboost rewarded video display"
+    },
+    {
+      "id": "chartboost-has-interstitial",
+      "className": "com.chartboost.sdk.Chartboost",
+      "methodName": "hasInterstitial",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Chartboost",
+      "description": "Report Chartboost interstitial as unavailable"
+    },
+    {
+      "id": "chartboost-has-rewarded",
+      "className": "com.chartboost.sdk.Chartboost",
+      "methodName": "hasRewardedVideo",
+      "action": "BLOCK_RETURN_FALSE",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Chartboost",
+      "description": "Report Chartboost rewarded video as unavailable"
     },
     {
       "id": "mopub-init",
@@ -171,7 +311,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "MoPub"
+      "sdkName": "MoPub",
+      "description": "Block MoPub SDK initialization"
     },
     {
       "id": "kakao-adfit-load",
@@ -180,7 +321,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Kakao AdFit"
+      "sdkName": "Kakao AdFit",
+      "description": "Block Kakao AdFit banner ad loading"
     },
     {
       "id": "coupang-ads-init",
@@ -189,7 +331,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Coupang Ads"
+      "sdkName": "Coupang Ads",
+      "description": "Block Coupang Ads SDK initialization"
     },
     {
       "id": "startapp-sdk-init",
@@ -198,7 +341,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "StartApp"
+      "sdkName": "StartApp",
+      "description": "Block StartApp SDK initialization"
     },
     {
       "id": "pangle-sdk-init",
@@ -207,7 +351,158 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Pangle (ByteDance)"
+      "sdkName": "Pangle (ByteDance)",
+      "description": "Block Pangle (ByteDance) SDK initialization"
+    },
+    {
+      "id": "amazon-adlayout-load",
+      "className": "com.amazon.device.ads.AdLayout",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Amazon Device Ads",
+      "description": "Block Amazon ad banner loading"
+    },
+    {
+      "id": "amazon-dtbadrequest-load",
+      "className": "com.amazon.device.ads.DTBAdRequest",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Amazon Device Ads",
+      "description": "Block Amazon ad request loading"
+    },
+    {
+      "id": "flurry-fetchad",
+      "className": "com.flurry.android.FlurryAds",
+      "methodName": "fetchAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Flurry",
+      "description": "Block Flurry ad fetching"
+    },
+    {
+      "id": "vpon-banner-load",
+      "className": "com.vpon.ads.VponBanner",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Vpon",
+      "description": "Block Vpon banner ad loading"
+    },
+    {
+      "id": "vpon-interstitial-show",
+      "className": "com.vpon.ads.VponInterstitialAd",
+      "methodName": "show",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Vpon",
+      "description": "Block Vpon interstitial ad display"
+    },
+    {
+      "id": "nend-adview-load",
+      "className": "net.nend.android.NendAdView",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Nend",
+      "description": "Block Nend banner ad loading"
+    },
+    {
+      "id": "yandex-banner-load",
+      "className": "com.yandex.mobile.ads.banner.BannerAdView",
+      "methodName": "loadAd",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Yandex Mobile Ads",
+      "description": "Block Yandex banner ad loading"
+    },
+    {
+      "id": "mobfox-banner-load",
+      "className": "com.mobfox.sdk.banner.Banner",
+      "methodName": "load",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "MobFox",
+      "description": "Block MobFox banner ad loading"
+    },
+    {
+      "id": "millennial-interstitial-load",
+      "className": "com.millennialmedia.InterstitialAd",
+      "methodName": "load",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Millennial Media",
+      "description": "Block Millennial Media interstitial ad loading"
+    },
+    {
+      "id": "tapjoy-connect",
+      "className": "com.tapjoy.Tapjoy",
+      "methodName": "connect",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Tapjoy",
+      "description": "Block Tapjoy SDK initialization"
+    },
+    {
+      "id": "fyber-init",
+      "className": "com.fyber.FairBid",
+      "methodName": "start",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Fyber",
+      "description": "Block Fyber FairBid SDK initialization"
+    },
+    {
+      "id": "smaato-init",
+      "className": "com.smaato.sdk.core.SmaatoSdk",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Smaato",
+      "description": "Block Smaato SDK initialization"
+    },
+    {
+      "id": "digitalturbine-init",
+      "className": "com.digitalturbine.ignite.IgniteSdk",
+      "methodName": "init",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Digital Turbine",
+      "description": "Block Digital Turbine SDK initialization"
+    },
+    {
+      "id": "ogury-init",
+      "className": "com.ogury.sdk.Ogury",
+      "methodName": "start",
+      "action": "BLOCK_RETURN_VOID",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Ogury",
+      "description": "Block Ogury SDK initialization"
+    },
+    {
+      "id": "mintegral-init",
+      "className": "com.mbridge.msdk.out.MBridgeSDKFactory",
+      "methodName": "getMBridgeSDK",
+      "action": "BLOCK_RETURN_NULL",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Mintegral",
+      "description": "Block Mintegral SDK initialization"
     },
     {
       "id": "ump-load-show-consent",
@@ -216,7 +511,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Google UMP"
+      "sdkName": "Google UMP",
+      "description": "Skip Google consent form (GDPR/UMP)"
     },
     {
       "id": "ump-load-consent-form",
@@ -225,7 +521,8 @@
       "action": "BLOCK_RETURN_VOID",
       "enabled": true,
       "source": "BUILTIN",
-      "sdkName": "Google UMP"
+      "sdkName": "Google UMP",
+      "description": "Skip Google consent form loading"
     },
     {
       "id": "network-okhttp-block",
@@ -240,7 +537,8 @@
       "enabled": true,
       "source": "BUILTIN",
       "sdkName": "Network (OkHttp)",
-      "notes": "Block ad domain requests via OkHttp"
+      "notes": "Block ad domain requests via OkHttp",
+      "description": "Block ad domain requests via OkHttp"
     },
     {
       "id": "network-url-block",
@@ -255,7 +553,22 @@
       "enabled": true,
       "source": "BUILTIN",
       "sdkName": "Network (HttpURLConnection)",
-      "notes": "Block ad domain requests via HttpURLConnection"
+      "notes": "Block ad domain requests via HttpURLConnection",
+      "description": "Block ad domain requests via HttpURLConnection"
+    },
+    {
+      "id": "universal-signature-spoof",
+      "className": "android.app.ApplicationPackageManager",
+      "methodName": "getPackageInfo",
+      "paramTypes": [
+        "java.lang.String",
+        "int"
+      ],
+      "action": "SPOOF_SIGNATURE",
+      "enabled": true,
+      "source": "BUILTIN",
+      "sdkName": "Tamper Detection",
+      "description": "Return original APK signature to bypass tamper detection"
     }
   ]
 }

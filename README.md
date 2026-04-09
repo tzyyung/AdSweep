@@ -11,7 +11,7 @@
 - **條件式攔截** — 規則引擎支援域名比對、參數檢查、正則匹配
 - **自動發現模式** — `--discover` 自動記錄廣告行為，產出可用規則
 - **不碰資源檔** — 使用 `-r` 模式反編譯，資源完整保留
-- **14+ 廣告 SDK** — 內建通用規則覆蓋主流廣告平台
+- **27+ 廣告 SDK** — 內建 55 條通用規則覆蓋主流廣告平台
 - **WebView 廣告攔截** — Greasemonkey 相容 userscript 引擎，支援 `@match`/`@exclude`/`@run-at`，CSS + JS + MutationObserver 四層攔截
 - **通用簽名繞過** — `SPOOF_SIGNATURE` 自動還原原始 APK 簽名，繞過 tamper detection
 - **Runtime Hook** — 不修改原始 smali，透過 LSPlant 動態攔截
@@ -159,7 +159,7 @@ graph LR
         N2["URL 比對 → 攔截廣告請求"]
     end
 
-    subgraph L1["SDK 層（27 條規則）"]
+    subgraph L1["SDK 層（55 條規則）"]
         S1["AdMob / AppLovin / Facebook / ..."]
         S2["方法 Hook → 阻止 SDK 初始化/載入"]
     end
@@ -206,7 +206,7 @@ python discover_analyzer.py discovery_log.txt
 
 ## 支援的廣告 SDK（內建通用規則）
 
-AdMob, AppLovin, Facebook Audience Network, IronSource, Unity Ads, Vungle, AdColony, InMobi, Chartboost, MoPub, Kakao AdFit, Coupang Ads, StartApp, Pangle (ByteDance), Google UMP, Tamper Detection (通用簽名繞過)
+AdMob, AppLovin, Facebook Audience Network, IronSource, Unity Ads, Vungle, AdColony, InMobi, Chartboost, MoPub, Kakao AdFit, Coupang Ads, StartApp, Pangle (ByteDance), Amazon Device Ads, Flurry, Vpon, Nend, Yandex Mobile Ads, MobFox, Millennial Media, Tapjoy, Fyber, Smaato, Digital Turbine, Ogury, Mintegral, Google UMP, Tamper Detection (通用簽名繞過)
 
 ## 實測結果
 

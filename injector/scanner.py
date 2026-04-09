@@ -67,6 +67,58 @@ KNOWN_SDK_PATTERNS = {
         "packages": ["com/bytedance/sdk/openadsdk"],
         "confidence": 1.0,
     },
+    "Amazon Device Ads": {
+        "packages": ["com/amazon/device/ads"],
+        "confidence": 1.0,
+    },
+    "Flurry": {
+        "packages": ["com/flurry/android"],
+        "confidence": 1.0,
+    },
+    "Vpon": {
+        "packages": ["com/vpon/ads"],
+        "confidence": 1.0,
+    },
+    "Nend": {
+        "packages": ["net/nend/android"],
+        "confidence": 1.0,
+    },
+    "Yandex Mobile Ads": {
+        "packages": ["com/yandex/mobile/ads"],
+        "confidence": 1.0,
+    },
+    "MobFox": {
+        "packages": ["com/mobfox/sdk"],
+        "confidence": 1.0,
+    },
+    "Millennial Media": {
+        "packages": ["com/millennialmedia"],
+        "confidence": 1.0,
+    },
+    "Tapjoy": {
+        "packages": ["com/tapjoy"],
+        "confidence": 1.0,
+    },
+    "Fyber": {
+        "packages": ["com/fyber"],
+        "confidence": 1.0,
+    },
+    "Smaato": {
+        "packages": ["com/smaato/sdk"],
+        "confidence": 1.0,
+    },
+    "Digital Turbine": {
+        "packages": ["com/digitalturbine"],
+        "confidence": 1.0,
+    },
+    "Ogury": {
+        "packages": ["com/ogury"],
+        "confidence": 1.0,
+    },
+    "Mintegral": {
+        "packages": ["com/mbridge/msdk"],
+        "confidence": 1.0,
+    },
 }
 
 # Heuristic patterns for unknown ad code
@@ -198,6 +250,7 @@ def generate_suggested_rules(decompiled_dir: str, report: Dict) -> List[Dict]:
     # Method name patterns that are likely ad-loading entry points
     AD_METHOD_PATTERNS = [
         (r"\.method\s+public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(\w*(?:load|show|init|start|fetch|request|display|present)\w*)\(", "BLOCK_RETURN_VOID"),
+        (r"\.method\s+public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(\w*(?:canShow|isReady|isAvailable|isEnabled|hasInterstitial|hasRewardedVideo|isLoaded)\w*)\(", "BLOCK_RETURN_FALSE"),
     ]
 
     for sdk_info in report["found_sdks"]:
@@ -222,9 +275,10 @@ def generate_suggested_rules(decompiled_dir: str, report: Dict) -> List[Dict]:
                 for pattern, default_action in AD_METHOD_PATTERNS:
                     for match in re.finditer(pattern, content):
                         method_name = match.group(1)
-                        # Skip constructors, getters, setters, listeners
-                        if method_name.startswith(("get", "set", "is", "has", "on", "add", "remove")):
-                            continue
+                        # Skip constructors, getters, setters, listeners (only for VOID actions)
+                        if default_action == "BLOCK_RETURN_VOID":
+                            if method_name.startswith(("get", "set", "is", "has", "on", "add", "remove")):
+                                continue
                         if method_name in ("toString", "hashCode", "equals", "clone"):
                             continue
 

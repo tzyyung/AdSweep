@@ -108,6 +108,105 @@ STRING_FINGERPRINTS = {
         "sdk": "Ad Network Domains",
         "confidence": 0.8,
     },
+    "amazon_ads": {
+        "patterns": [
+            r"amazon-adsystem\.com",
+            r"DTBAdRequest",
+            r"amazon\.device\.ads",
+        ],
+        "sdk": "Amazon Ads (obfuscated)",
+        "confidence": 0.85,
+    },
+    "flurry": {
+        "patterns": [
+            r"flurry\.com",
+            r"FlurryAds",
+            r"flurry\.android",
+        ],
+        "sdk": "Flurry (obfuscated)",
+        "confidence": 0.85,
+    },
+    "chartboost": {
+        "patterns": [
+            r"chartboost\.com",
+            r"Chartboost",
+            r"startWithAppId",
+        ],
+        "sdk": "Chartboost (obfuscated)",
+        "confidence": 0.85,
+    },
+    "mopub": {
+        "patterns": [
+            r"mopub\.com",
+            r"MoPub",
+            r"MoPubView",
+        ],
+        "sdk": "MoPub (obfuscated)",
+        "confidence": 0.85,
+    },
+    "tapjoy": {
+        "patterns": [
+            r"tapjoy\.com",
+            r"Tapjoy",
+            r"TJPlacement",
+        ],
+        "sdk": "Tapjoy (obfuscated)",
+        "confidence": 0.85,
+    },
+    "pangle": {
+        "patterns": [
+            r"pangle\.io",
+            r"TTAdSdk",
+            r"bytedance.*openadsdk",
+        ],
+        "sdk": "Pangle (obfuscated)",
+        "confidence": 0.85,
+    },
+    "mintegral": {
+        "patterns": [
+            r"mintegral\.com",
+            r"MBridgeSDK",
+            r"mbridge\.msdk",
+        ],
+        "sdk": "Mintegral (obfuscated)",
+        "confidence": 0.85,
+    },
+    "smaato": {
+        "patterns": [
+            r"smaato\.com",
+            r"SmaatoSdk",
+            r"SOMAAdRequest",
+        ],
+        "sdk": "Smaato (obfuscated)",
+        "confidence": 0.85,
+    },
+    "ogury": {
+        "patterns": [
+            r"ogury\.co",
+            r"Ogury",
+            r"OguryAds",
+        ],
+        "sdk": "Ogury (obfuscated)",
+        "confidence": 0.85,
+    },
+    "yandex_ads": {
+        "patterns": [
+            r"yandex\.ru/ads",
+            r"yandex\.mobile\.ads",
+            r"YandexAds",
+        ],
+        "sdk": "Yandex Ads (obfuscated)",
+        "confidence": 0.85,
+    },
+    "fyber": {
+        "patterns": [
+            r"fyber\.com",
+            r"FairBid",
+            r"inneractive",
+        ],
+        "sdk": "Fyber (obfuscated)",
+        "confidence": 0.85,
+    },
 }
 
 
@@ -197,6 +296,7 @@ class MethodFingerprint:
     invokes: List[str] = field(default_factory=list)   # Invoke patterns in method body
     action: str = "BLOCK_RETURN_VOID"  # Suggested hook action
     confidence: float = 0.8
+    min_string_matches: int = 0        # 0 = all must match; >0 = at least N matches
 
 # Known method signatures that survive obfuscation
 METHOD_FINGERPRINTS = [
@@ -256,6 +356,112 @@ METHOD_FINGERPRINTS = [
         action="BLOCK_RETURN_VOID",
         confidence=0.85,
     ),
+    # AppLovin SDK init wrapper
+    MethodFingerprint(
+        name="AppLovinSdk.init",
+        sdk="AppLovin",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/applovin/sdk/AppLovinSdk;->"],
+        strings=["AppLovinSdk"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # Unity Ads init wrapper
+    MethodFingerprint(
+        name="UnityAds.initialize",
+        sdk="Unity Ads",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/unity3d/ads/UnityAds;->"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # IronSource init wrapper
+    MethodFingerprint(
+        name="IronSource.init",
+        sdk="IronSource",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/ironsource/mediationsdk/IronSource;->"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # Chartboost init wrapper
+    MethodFingerprint(
+        name="Chartboost.start",
+        sdk="Chartboost",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/chartboost/sdk/Chartboost;->"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # Amazon Ads wrapper
+    MethodFingerprint(
+        name="Amazon.DTBAdRequest.loadAd",
+        sdk="Amazon Ads",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/amazon/device/ads/"],
+        strings=["amazon"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.8,
+        min_string_matches=1,
+    ),
+    # Vungle init wrapper
+    MethodFingerprint(
+        name="VungleAds.init",
+        sdk="Vungle",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/vungle/ads/VungleAds;->"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # InMobi init wrapper
+    MethodFingerprint(
+        name="InMobiSdk.init",
+        sdk="InMobi",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["Lcom/inmobi/sdk/InMobiSdk;->"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.85,
+    ),
+    # Generic interstitial show wrapper
+    MethodFingerprint(
+        name="Interstitial.show wrapper",
+        sdk="Generic Ad SDK",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["->show"],
+        strings=["interstitial", "Interstitial"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.7,
+        min_string_matches=1,
+    ),
+    # Generic rewarded ad show wrapper
+    MethodFingerprint(
+        name="RewardedAd.show wrapper",
+        sdk="Generic Ad SDK",
+        return_type="V",
+        access_flags="",
+        param_types=[],
+        invokes=["->show"],
+        strings=["rewarded", "Rewarded", "reward"],
+        action="BLOCK_RETURN_VOID",
+        confidence=0.7,
+        min_string_matches=1,
+    ),
 ]
 
 
@@ -294,11 +500,16 @@ def smart_scan(decompiled_dir: str, verbose: bool = False) -> List[SmartFinding]
     if verbose:
         print(f"[*] Smart scan: {len(smali_files)} smali files in {len(smali_dirs)} dirs")
 
+    # Build string index once for Level 4 optimization
+    string_index = _build_string_index(smali_files)
+    if verbose:
+        print(f"  [*] String index: {len(string_index)} unique strings indexed")
+
     # Run all levels
     findings.extend(_scan_level1_strings(smali_files, smali_dirs, verbose))
     findings.extend(_scan_level2_inheritance(smali_files, smali_dirs, verbose))
     findings.extend(_scan_level3_api_patterns(smali_files, smali_dirs, verbose))
-    findings.extend(_scan_level4_signatures(smali_files, smali_dirs, verbose))
+    findings.extend(_scan_level4_signatures(smali_files, smali_dirs, verbose, string_index))
 
     # Sort by confidence descending
     findings.sort(key=lambda f: f.confidence, reverse=True)
@@ -500,12 +711,66 @@ def _scan_level3_api_patterns(smali_files: List[str], smali_dirs: List[str],
 
 # ── Level 4 Implementation ───────────────────────────────────────────────────
 
+def _build_string_index(smali_files: List[str]) -> Dict[str, List[Tuple[str, str]]]:
+    """
+    Build reverse index: string constant -> [(file_path, method_name)].
+    Scans all smali files once. Used by Level 4 to quickly locate methods
+    containing specific strings (ReVanced-style optimization).
+    """
+    index: Dict[str, List[Tuple[str, str]]] = {}
+
+    for path in smali_files:
+        try:
+            with open(path, "r", errors="ignore") as f:
+                content = f.read()
+        except Exception:
+            continue
+
+        current_method = None
+        for line in content.split('\n'):
+            method_match = re.match(r'\.method\s+.*\s+(\S+)\(', line)
+            if method_match:
+                current_method = method_match.group(1)
+            elif line.strip() == '.end method':
+                current_method = None
+            elif current_method:
+                str_match = re.search(r'const-string [vp]\d+, "(.*?)"', line)
+                if str_match:
+                    s = str_match.group(1)
+                    if s not in index:
+                        index[s] = []
+                    index[s].append((path, current_method))
+
+    return index
+
+
 def _scan_level4_signatures(smali_files: List[str], smali_dirs: List[str],
-                             verbose: bool) -> List[SmartFinding]:
+                             verbose: bool,
+                             string_index: Optional[Dict] = None) -> List[SmartFinding]:
     """Match method signatures against known ad SDK fingerprints."""
     findings = []
 
+    # Pre-filter: if string index available, only scan files that contain
+    # fingerprint-relevant strings or invokes
+    candidate_files = None
+    if string_index:
+        candidate_files = set()
+        for fp in METHOD_FINGERPRINTS:
+            for s in fp.strings:
+                if s in string_index:
+                    for file_path, _ in string_index[s]:
+                        candidate_files.add(file_path)
+        if verbose and candidate_files:
+            print(f"  [L4] String index: {len(candidate_files)} candidate files "
+                  f"(of {len(smali_files)} total)")
+
     for path in smali_files:
+        # Skip files that cannot match any string-based fingerprint
+        if candidate_files is not None and path not in candidate_files:
+            # Still scan for invoke-only fingerprints
+            has_invoke_only = any(fp.invokes and not fp.strings for fp in METHOD_FINGERPRINTS)
+            if not has_invoke_only:
+                continue
         try:
             with open(path, "r", errors="ignore") as f:
                 content = f.read()
@@ -612,9 +877,11 @@ def _match_fingerprint(fp: MethodFingerprint, body: str, access: str,
         if not all(p in body for p in fp.invokes):
             return False
 
-    # All string patterns must appear in body
+    # String matching: supports partial matches via min_string_matches
     if fp.strings:
-        if not all(s in body for s in fp.strings):
+        matched = sum(1 for s in fp.strings if s in body)
+        required = fp.min_string_matches if fp.min_string_matches > 0 else len(fp.strings)
+        if matched < required:
             return False
 
     return True
